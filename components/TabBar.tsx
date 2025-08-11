@@ -1,3 +1,4 @@
+// components/TabBar.tsx
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,9 +23,7 @@ export default function TabBar() {
               href={t.href}
               className={clsx(
                 "py-3 text-center text-sm transition",
-                active
-                  ? "text-scrbl font-semibold"
-                  : "text-neutral-300 hover:text-white"
+                active ? "text-scrbl font-semibold" : "text-neutral-300 hover:text-white"
               )}
             >
               {t.label}
@@ -35,4 +34,3 @@ export default function TabBar() {
     </nav>
   );
 }
-
