@@ -9,9 +9,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      // Exact neon from the logo (#39FF14)
+      // exact neon from the logo
       colors: {
-        scrbl: "rgb(57 255 20 / <alpha-value>)",
+        scrbl: "rgb(57 255 20 / <alpha-value>)", // #39FF14
       },
     },
   },
@@ -19,5 +19,6 @@ const config: Config = {
 };
 
 export default config;
+
 
 
