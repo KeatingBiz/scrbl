@@ -21,11 +21,13 @@ export default function TabBar() {
             <Link
               key={t.href}
               href={t.href}
+              data-active={active || undefined}
               className={clsx(
                 "py-3 text-center text-sm transition",
-                active ? "font-semibold text-[#39FF14]" : "text-neutral-300 hover:text-white"
+                active ? "tab-active" : "text-neutral-300 hover:text-white"
               )}
-              style={active ? { color: "#39FF14", fontWeight: 600 } : undefined}
+              // Inline hex too, just in case
+              style={active ? { color: "#39FF14" } : undefined}
             >
               {t.label}
             </Link>
@@ -35,5 +37,6 @@ export default function TabBar() {
     </nav>
   );
 }
+
 
 
