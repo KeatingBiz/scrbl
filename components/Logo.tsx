@@ -5,25 +5,26 @@ import Link from "next/link";
 
 type Size = "sm" | "md" | "lg";
 
+// bumped up all sizes
 const px: Record<Size, number> = {
-  sm: 28,   // header
-  md: 40,   // general small badges, etc.
-  lg: 96,   // hero on Scrbl tab
+  sm: 36,   // header
+  md: 48,   // general
+  lg: 128,  // big hero on Scrbl tab
 };
 
 export default function Logo({
   size = "md",
   href = "/",
-  glow = true,
+  glow = false, // keep off to avoid the box effect with PNG
 }: {
   size?: Size;
-  href?: string | null; // set to null/undefined to render non-clickable
+  href?: string | null;
   glow?: boolean;
 }) {
   const w = px[size];
   const img = (
     <Image
-      src="/scrbl.png"   // place your image at /public/scrbl.png
+      src="/scrbl.png"
       width={w}
       height={w}
       alt="SCRBL"
@@ -31,7 +32,6 @@ export default function Logo({
       className={glow ? "select-none drop-shadow-[0_0_12px_rgba(57,255,20,0.45)]" : "select-none"}
     />
   );
-
   if (!href) return img;
   return (
     <Link href={href} aria-label="Home" className="inline-flex items-center">
@@ -39,5 +39,6 @@ export default function Logo({
     </Link>
   );
 }
+
 
 
