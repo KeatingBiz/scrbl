@@ -16,12 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Top bar with logo */}
         <header className="sticky top-0 z-30 border-b border-white/10 bg-black/70 backdrop-blur supports-[backdrop-filter]:bg-black/40">
           <div className="mx-auto max-w-md px-4 h-12 flex items-center">
-            <Logo size="sm" />
+            <Logo size="sm" href="/" />
           </div>
         </header>
 
         {/* Page content */}
-        <main className="pb-20"> {/* bottom padding so content doesn't hide under tab bar */}
+        <main className="pb-20">
           {children}
         </main>
 
@@ -31,4 +31,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
 
