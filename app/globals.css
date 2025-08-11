@@ -1,39 +1,76 @@
-// components/TabBar.tsx
-"use client";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import clsx from "clsx";
+/* app/globals.css */
 
-const tabs = [
-  { href: "/", label: "Scrbl" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/calendar", label: "Calendar" },
-];
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export default function TabBar() {
-  const pathname = usePathname() || "/";
-  return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-black/70 backdrop-blur supports-[backdrop-filter]:bg-black/40">
-      <div className="mx-auto max-w-md grid grid-cols-3">
-        {tabs.map((t) => {
-          const active = pathname === t.href || (t.href !== "/" && pathname.startsWith(t.href));
-          return (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={clsx(
-                "py-3 text-center text-sm transition",
-                active ? "tab-active text-scrbl font-semibold" : "text-neutral-300 hover:text-white"
-              )}
-              style={active ? { color: "#2AEF7C" } : undefined}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
+/* ===== SCRBL theme ===== */
+:root {
+  /* exact green from your logo */
+  --scrbl: #2AEF7C;
+  /* space-separated RGB so we can use rgba(var(--scrbl-rgb), a) */
+  --scrbl-rgb: 42 239 124;
 }
+
+/* Base */
+html, body { height: 100%; }
+body {
+  @apply bg-black text-white;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Text selection uses brand tint */
+::selection {
+  background: rgba(var(--scrbl-rgb), 0.25);
+  color: #fff;
+}
+
+/* Form controls (checkbox, range thumbs, etc.) pick up brand */
+*:where(input, select, textarea, progress) {
+  accent-color: var(--scrbl);
+}
+
+/* ===== Brand helpers ===== */
+
+/* Force brand color for the active tab label in the bottom bar */
+.tab-active {
+  color: var(--scrbl) !important;
+  font-weight: 600 !important;
+}
+
+/* Brand button used on the home screen (and anywhere else) */
+.btn-scrbl {
+  background-color: rgba(var(--scrbl-rgb), 0.20) !important;
+  color: var(--scrbl) !important;
+  border: 1px solid rgba(var(--scrbl-rgb), 0.30);
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+.btn-scrbl:hover {
+  background-color: rgba(var(--scrbl-rgb), 0.30) !important;
+  border-color: rgba(var(--scrbl-rgb), 0.40);
+}
+.btn-scrbl:active {
+  transform: translateY(1px);
+}
+.btn-scrbl:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Optional: subtle ruled "notebook" texture for step cards */
+.notebook {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 100% 24px;
+}
+
+/* Images shouldn’t be draggable/selectable in the UI */
+img {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 
 
