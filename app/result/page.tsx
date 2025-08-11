@@ -3,16 +3,30 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BoardUnderstanding } from "@/lib/types";
 
-function Notebook({ steps, final }: { steps?: { n: number; text: string }[]; final?: string | null }) {
+type EventItem = NonNullable<BoardUnderstanding["events"]>[number];
+
+function Notebook({
+  steps,
+  final,
+}: {
+  steps?: { n: number; text: string }[];
+  final?: string | null;
+}) {
   if (!steps?.length && !final) return null;
   return (
     <div className="mt-3 rounded-xl bg-black/30 border border-white/10 p-3">
       <ol className="list-decimal list-inside space-y-2">
-        {steps?.map(s => (
-          <li key={s.n} className="text-sm leading-6">{s.text}</li>
+        {steps?.map((s) => (
+          <li key={s.n} className="text-sm leading-6">
+            {s.text}
+          </li>
         ))}
       </ol>
-      {final && <div className="mt-3 text-sm text-neutral-200"><span className="font-semibold">Final:</span> {final}</div>}
+      {final && (
+        <div className="mt-3 text-sm text-neutral-200">
+          <span className="font-semibold">Final:</span> {final}
+        </div>
+      )}
     </div>
   );
 }
@@ -25,22 +39,31 @@ export default function ResultPage() {
   useEffect(() => {
     const img = sessionStorage.getItem("scrbl:lastImage");
     const res = sessionStorage.getItem("scrbl:lastResult");
-    if (!img || !res) { router.replace("/"); return; }
+    if (!img || !res) {
+      router.replace("/");
+      return;
+    }
     setDataUrl(img);
-    setResult(JSON.parse(res));
+    setResult(JSON.parse(res) as BoardUnderstanding);
   }, [router]);
 
   const title = useMemo(() => {
     if (!result) return "";
     switch (result.type) {
-      case "PROBLEM_UNSOLVED": return "Solved (Step-by-step)";
-      case "PROBLEM_SOLVED": return result.answer_status === "mismatch" ? "Checked (Found an issue)" : "Explained (Step-by-step)";
-      case "ANNOUNCEMENT": return "Event Detected";
-      default: return "Couldn’t Classify";
+      case "PROBLEM_UNSOLVED":
+        return "Solved (Step-by-step)";
+      case "PROBLEM_SOLVED":
+        return result.answer_status === "mismatch"
+          ? "Checked (Found an issue)"
+          : "Explained (Step-by-step)";
+      case "ANNOUNCEMENT":
+        return "Event Detected";
+      default:
+        return "Couldn’t Classify";
     }
   }, [result]);
 
-  async function addToCalendar(ev: BoardUnderstanding["events"][number]) {
+  async function addToCalendar(ev: EventItem) {
     const r = await fetch("/api/calendar/ics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -48,8 +71,8 @@ export default function ResultPage() {
         title: ev.title,
         startISO: ev.date_start_iso,
         endISO: ev.date_end_iso ?? null,
-        notes: result?.raw_text || ""
-      })
+        notes: result?.raw_text || "",
+      }),
     });
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
@@ -70,32 +93,47 @@ export default function ResultPage() {
       </div>
 
       {dataUrl && (
-        <img src={dataUrl} alt="capture" className="w-full max-w-md rounded-xl border border-white/10" />
+        <img
+          src={dataUrl}
+          alt="capture"
+          className="w-full max-w-md rounded-xl border border-white/10"
+        />
       )}
 
       {result?.type === "PROBLEM_UNSOLVED" && (
         <div className="w-full max-w-md">
-          <div className="text-sm text-neutral-300">{result.question || "Problem"}</div>
+          <div className="text-sm text-neutral-300">
+            {result.question || "Problem"}
+          </div>
           <Notebook steps={result.steps} final={result.final} />
         </div>
       )}
 
       {result?.type === "PROBLEM_SOLVED" && (
         <div className="w-full max-w-md">
-          <div className="text-sm text-neutral-300">{result.question || "Problem"}</div>
+          <div className="text-sm text-neutral-300">
+            {result.question || "Problem"}
+          </div>
           {result.given_answer && (
-            <div className="mt-2 text-xs text-neutral-400">Board’s answer: {result.given_answer} ({result.answer_status})</div>
+            <div className="mt-2 text-xs text-neutral-400">
+              Board’s answer: {result.given_answer} ({result.answer_status})
+            </div>
           )}
-          <Notebook steps={result.steps} final={result.final ?? result.given_answer ?? null} />
+          <Notebook
+            steps={result.steps}
+            final={result.final ?? result.given_answer ?? null}
+          />
         </div>
       )}
 
       {result?.type === "ANNOUNCEMENT" && (
         <div className="w-full max-w-md space-y-3">
           <div className="rounded-xl bg-black/30 border border-white/10 p-3">
-            <div className="text-sm text-neutral-300 whitespace-pre-wrap">{result.raw_text || "Announcement"}</div>
+            <div className="text-sm text-neutral-300 whitespace-pre-wrap">
+              {result.raw_text || "Announcement"}
+            </div>
           </div>
-          {result.events?.map((ev, i) => (
+          {(result?.events ?? []).map((ev: EventItem, i: number) => (
             <div key={i} className="rounded-xl bg-black/30 border border-white/10 p-3">
               <div className="font-semibold">{ev.title}</div>
               <div className="text-xs text-neutral-400 mt-1">{ev.date_start_iso}</div>
@@ -117,7 +155,9 @@ export default function ResultPage() {
       )}
 
       {typeof result?.confidence === "number" && (
-        <div className="text-xs text-neutral-500">Confidence: {(result.confidence * 100).toFixed(0)}%</div>
+        <div className="text-xs text-neutral-500">
+          Confidence: {(result.confidence * 100).toFixed(0)}%
+        </div>
       )}
 
       <div className="w-full max-w-md">
