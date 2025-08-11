@@ -15,16 +15,26 @@ export type Step = {
   emoji: string | null;
 };
 
+export type VerificationMethod =
+  | "algebra-substitution"
+  | "stats-recompute"
+  | "geometry-identity"
+  | "calculus-numeric"
+  | "physics-formula"
+  | "chemistry-balance"
+  | "finance-recompute"
+  | "none";
+
 export type Verification = {
-  subject: string | null;                  // e.g., "algebra"
-  method: "algebra-substitution" | "none";
+  subject: string | null;             // e.g., "algebra", "stats"
+  method: VerificationMethod;
   allVerified: boolean;
   checks: Array<{
-    value: string;                         // "x=4"
+    value: string;                    // e.g., "x=4", "mean=6.25"
     ok: boolean;
-    lhs?: number;
+    lhs?: number;                     // used when we compare LHS vs RHS or recompute
     rhs?: number;
-    reason?: string | null;                // e.g., "division by zero"
+    reason?: string | null;           // e.g., "residual not zero"
   }>;
 };
 
@@ -34,7 +44,7 @@ export type BoardUnderstanding = {
   confidence: number;
   raw_text?: string | null;
 
-  // Problems
+  // Problems:
   question?: string | null;
   given_answer?: string | null;
   steps?: Step[];
@@ -46,7 +56,7 @@ export type BoardUnderstanding = {
     | "not_applicable"
     | null;
 
-  // Announcements
+  // Announcements:
   events?: Array<{
     title: string;
     date_start_iso: string;
@@ -55,7 +65,8 @@ export type BoardUnderstanding = {
     notes?: string | null;
   }>;
 
-  // Server-added (silent) verification
+  // Server-added (silent) verification:
   verification?: Verification;
 };
+
 
