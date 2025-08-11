@@ -1,4 +1,3 @@
-// lib/verify/algebra.ts
 import { Parser } from "expr-eval";
 import type { BoardUnderstanding, Verification } from "@/lib/types";
 
@@ -123,4 +122,5 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
     checks
   };
 }
+
 
