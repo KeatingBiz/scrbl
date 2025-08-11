@@ -1,3 +1,4 @@
+// app/result/page.tsx
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -45,7 +46,7 @@ function Notebook({ steps, final }: { steps?: Step[]; final?: string | null }) {
     <div className="mt-3 space-y-3">
       {steps?.map((s) => <StepCard key={s.n} s={s} />)}
       {final && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+        <div className="rounded-xl border border-scrbl/30 bg-scrbl/10 p-3">
           <div className="text-sm font-semibold">Final:</div>
           <div className="mt-1 text-base">✅ {final}</div>
         </div>
@@ -69,13 +70,12 @@ export default function ResultPage() {
     setResult(JSON.parse(res) as BoardUnderstanding);
   }, [router]);
 
-  // Auto-add announcements to in-app calendar (once per load)
+  // Auto-add announcements to in-app calendar (visual flow only)
   useEffect(() => {
     if (!result || result.type !== "ANNOUNCEMENT") return;
     const evs = (result.events ?? []).filter(Boolean);
     if (!evs.length) return;
 
-    // Basic de-dupe: same title + startISO will be upserted by the hook
     const toAdd: Partial<AppEvent>[] = evs.map((e) => ({
       title: e.title,
       startISO: e.date_start_iso,
@@ -136,7 +136,7 @@ export default function ResultPage() {
         </div>
 
         {result?.type === "ANNOUNCEMENT" && addedCount > 0 && (
-          <div className="mt-3 text-xs text-emerald-300">
+          <div className="mt-3 text-xs text-scrbl">
             ✅ Added {addedCount} event{addedCount > 1 ? "s" : ""} to your in-app calendar.{" "}
             <a href="/calendar" className="underline hover:no-underline">Open calendar</a>
           </div>
@@ -215,5 +215,6 @@ export default function ResultPage() {
     </div>
   );
 }
+
 
 
