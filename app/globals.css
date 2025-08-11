@@ -33,3 +33,16 @@ img, video { max-width: 100%; height: auto; display: block; }
   outline-offset: 2px;
 }
 
+  /* Brand color hard-override for active nav and brand buttons */
+.tab-active {
+  color: #39FF14 !important;         /* exact logo green */
+  font-weight: 600 !important;
+}
+.btn-scrbl {
+  background-color: color-mix(in srgb, #39FF14 20%, transparent) !important;
+  color: #39FF14 !important;
+}
+.btn-scrbl:hover {
+  background-color: color-mix(in srgb, #39FF14 30%, transparent) !important;
+}
+
