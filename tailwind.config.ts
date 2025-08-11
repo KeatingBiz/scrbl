@@ -1,15 +1,22 @@
-import type { Config } from 'tailwindcss'
+// tailwind.config.ts
+import type { Config } from "tailwindcss";
 
-export default {
-  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+const config: Config = {
+  content: [
+    "./app/**/*.{js,ts,jsx,tsx}",
+    "./components/**/*.{js,ts,jsx,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx}",
+  ],
   theme: {
     extend: {
+      // exact neon from your logo: #39FF14
       colors: {
-        scrbl: '#39FF14', // neon
-        charcoal: '#111111',
-        surface: '#0A0A0A'
-      }
-    }
+        scrbl: "rgb(57 255 20 / <alpha-value>)",
+      },
+    },
   },
-  plugins: []
-} satisfies Config
+  plugins: [],
+};
+
+export default config;
+
