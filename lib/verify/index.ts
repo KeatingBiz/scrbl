@@ -29,27 +29,29 @@ const plugins: Plugin[] = [
   },
   {
     name: "geometry",
-    matches: (_r, blob) => /\btriangle|rectangle|circle|hypotenuse|pythagorean|perimeter|area\b/i.test(blob),
+    matches: (_r, blob) => /\b(triangle|rectangle|circle|hypotenuse|pythagorean|perimeter|area)\b/i.test(blob),
     run: verifyGeometry
   },
   {
     name: "physics",
-    matches: (_r, blob) => /\bkinematics|acceleration|displacement|v=u\+at|s=ut\+|v\^?2=u\^?2\+2as|\bu=|\bv=|\ba=|\bt=|\bs=\b/i.test(blob),
+    matches: (_r, blob) =>
+      /\b(kinematics|acceleration|displacement)\b/i.test(blob) ||
+      /(v=u\+at|s=ut\+|v\^?2=u\^?2\+2as|\bu=|\bv=|\ba=|\bt=|\bs=)/i.test(blob),
     run: verifyPhysics
   },
   {
     name: "finance",
-    matches: (_r, blob) => /\bnpv\b|\birr\b|\bpmt\b|net present value|internal rate of return|compound annual growth rate|cagr/i.test(blob),
+    matches: (_r, blob) => /\b(npv|irr|pmt|net present value|internal rate of return|compound annual growth rate|cagr)\b/i.test(blob),
     run: verifyFinance
   },
   {
     name: "calculus",
-    matches: (_r, blob) => /\bderivative|integral|limit|d\/dx|∫|lim\b/i.test(blob),
+    matches: (_r, blob) => /\b(derivative|integral|limit|d\/dx)\b|[∫]|(?:\blim\b)/i.test(blob),
     run: verifyCalculus
   },
   {
     name: "chemistry",
-    matches: (_r, blob) => /\bH2O|NaCl|balance|stoichiometry|moles|molarity|dilution|gas law|PV=nRT\b/i.test(blob),
+    matches: (_r, blob) => /\b(H2O|NaCl|balance|stoichiometry|moles|molarity|dilution|PV\s*=\s*nRT|gas law)\b/i.test(blob),
     run: verifyChemistry
   }
 ];
@@ -68,8 +70,8 @@ export async function verifyBoard(result: BoardUnderstanding): Promise<Verificat
       // plugin failed; move on
     }
   }
-
   return null;
 }
+
 
 
