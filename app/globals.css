@@ -2,5 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-html, body { height: 100%; background: #000; }
+/* App theme */
+:root {
+  color-scheme: dark;
+  --scrbl: #39FF14; /* neon */
+}
+
+html, body {
+  height: 100%;
+  background: #000;
+  color: #fff;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+::selection { background: rgba(57, 255, 20, 0.25); color: #fff; }
+
+/* Media defaults */
+img, video { max-width: 100%; height: auto; display: block; }
+
+/* Notebook-style background for step cards */
+.notebook {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 100% 28px,
+    rgba(0,0,0,0.25);
+}
+
+/* Subtle focus ring for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--scrbl);
+  outline-offset: 2px;
+}
+
