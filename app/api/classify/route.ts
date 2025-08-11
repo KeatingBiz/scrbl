@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 const TZ = "America/Chicago";
 
-// ---- Strict JSON schema for Structured Outputs ----
+// Strict JSON Schema (all keys required; nullable where optional)
 const jsonSchema = {
   name: "board_understanding",
   strict: true,
@@ -15,24 +15,30 @@ const jsonSchema = {
     additionalProperties: false,
     properties: {
       type: { type: "string", enum: ["PROBLEM_UNSOLVED", "PROBLEM_SOLVED", "ANNOUNCEMENT", "UNKNOWN"] },
-      subject_guess: { type: "string" },
+      subject_guess: { type: ["string", "null"] },
       confidence: { type: "number" },
-      raw_text: { type: "string" },
+      raw_text: { type: ["string", "null"] },
 
       // Problems
-      question: { type: "string" },
+      question: { type: ["string", "null"] },
       given_answer: { type: ["string", "null"] },
       steps: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          properties: { n: { type: "integer" }, text: { type: "string" } },
+          properties: {
+            n: { type: "integer" },
+            text: { type: "string" }
+          },
           required: ["n", "text"]
         }
       },
       final: { type: ["string", "null"] },
-      answer_status: { type: "string", enum: ["matches", "mismatch", "no_answer_on_board", "not_applicable"] },
+      answer_status: {
+        type: ["string", "null"],
+        enum: ["matches", "mismatch", "no_answer_on_board", "not_applicable", null]
+      },
 
       // Announcements
       events: {
@@ -47,36 +53,63 @@ const jsonSchema = {
             location: { type: ["string", "null"] },
             notes: { type: ["string", "null"] }
           },
-          required: ["title", "date_start_iso"]
+          // strict requires EVERY key listed, even if it will be null
+          required: ["title", "date_start_iso", "date_end_iso", "location", "notes"]
         }
       }
     },
-    required: ["type", "confidence", "raw_text"]
+    // same rule at top level: require every key; use null/[] for “optional”
+    required: [
+      "type",
+      "subject_guess",
+      "confidence",
+      "raw_text",
+      "question",
+      "given_answer",
+      "steps",
+      "final",
+      "answer_status",
+      "events"
+    ]
   }
 } as const;
 
-// ---- Helpers ----
+// ---------- helpers ----------
 function clamp01(n: number | undefined): number {
   if (typeof n !== "number" || Number.isNaN(n)) return 0.5;
   return Math.max(0, Math.min(1, n));
 }
-
 function tryParse<T>(s: string): T | null {
   try { return JSON.parse(s) as T; } catch { return null; }
 }
-
 function scoreResult(p: BoardUnderstanding | null): number {
   if (!p) return 0;
   const conf = clamp01(p.confidence);
   const hasSteps = Array.isArray(p.steps) && p.steps.length > 0 ? 0.2 : 0;
   const hasEvents = Array.isArray(p.events) && p.events.length > 0 ? 0.2 : 0;
   const notUnknown = p.type && p.type !== "UNKNOWN" ? 0.2 : 0;
-  return conf + hasSteps + hasEvents + notUnknown; // max ~1.6
+  return conf + hasSteps + hasEvents + notUnknown;
 }
-
+function ensureDefaults(p: any) {
+  // make sure all required keys exist with sane defaults
+  const d = {
+    type: "UNKNOWN",
+    subject_guess: null,
+    confidence: 0,
+    raw_text: "",
+    question: null,
+    given_answer: null,
+    steps: [] as any[],
+    final: null,
+    answer_status: "not_applicable",
+    events: [] as any[]
+  };
+  return { ...d, ...p };
+}
 function applyLightFallbacks(parsed: BoardUnderstanding | null): BoardUnderstanding | null {
   if (!parsed) return null;
 
+  // infer labels when possible
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.steps?.length) {
     parsed.type = parsed.given_answer ? "PROBLEM_SOLVED" : "PROBLEM_UNSOLVED";
   }
@@ -111,47 +144,38 @@ async function callModelOnce(model: string, messages: any) {
     })
   });
 
-  const text = await r.text(); // capture raw for diagnostics
+  const text = await r.text();
   let parsed: BoardUnderstanding | null = null;
 
   if (r.ok) {
     const asJson = tryParse<any>(text);
     const content = asJson?.choices?.[0]?.message?.content ?? "{}";
     parsed = tryParse<BoardUnderstanding>(content);
+    parsed = parsed ? ensureDefaults(parsed) : null;
     parsed = applyLightFallbacks(parsed);
   }
 
-  return {
-    ok: r.ok,
-    status: r.status,
-    statusText: r.statusText,
-    raw: text,
-    parsed,
-  };
+  return { ok: r.ok, status: r.status, statusText: r.statusText, raw: text, parsed };
 }
 
-// Try a list of models until one succeeds or gives the best parsed result
 async function tryModelsInOrder(models: string[], messages: any) {
   const attempts: Array<Awaited<ReturnType<typeof callModelOnce>>> = [];
   for (const m of models) {
     const res = await callModelOnce(m, messages);
     attempts.push(res);
-    // If successful and not UNKNOWN, return immediately
     if (res.ok && res.parsed && res.parsed.type !== "UNKNOWN") {
       return { best: res, attempts };
     }
   }
-  // Pick best by score among ok attempts
   const okOnes = attempts.filter(a => a.ok && a.parsed);
   if (okOnes.length) {
     const best = okOnes.reduce((a, b) => (scoreResult(a.parsed!) >= scoreResult(b.parsed!) ? a : b));
     return { best, attempts };
   }
-  // None worked
   return { best: attempts[attempts.length - 1] ?? null, attempts };
 }
 
-// ---- Route ----
+// ---------- route ----------
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -168,19 +192,19 @@ export async function POST(req: NextRequest) {
 
     const system = `You are a tutor + organizer reading a whiteboard/notebook photo.
 Classify into exactly one of:
-- PROBLEM_UNSOLVED: a problem is shown and NOT fully solved on the board.
-- PROBLEM_SOLVED: worked steps and a final answer are shown.
-- ANNOUNCEMENT: scheduling/reminder content (e.g., "Test Friday", "HW due Wed").
-- UNKNOWN: only if the image is unreadable or unrelated.
+- PROBLEM_UNSOLVED
+- PROBLEM_SOLVED
+- ANNOUNCEMENT
+- UNKNOWN (only if unreadable/unrelated)
 
 Rules:
-- Prefer one of the first three; use UNKNOWN ONLY if unreadable.
-- For problems: provide short, numbered steps (no chain-of-thought) and a concise final.
-- If the board shows an answer, re-derive succinctly and set answer_status to matches/mismatch/no_answer_on_board/not_applicable.
-- For announcements: extract events[] with ISO 8601 in ${TZ}. If no time given, default start 09:00 local. Keep titles short.
-- Always fill raw_text with the most salient exact text you can see.
-- Keep confidence in [0,1].
-Return STRICT JSON per the schema. No extra commentary.`;
+- Prefer one of the first three; UNKNOWN only if unreadable.
+- For problems: short, numbered steps and a concise final (no chain-of-thought).
+- If the board shows an answer, re-derive and set answer_status.
+- For announcements: extract events[] with ISO 8601 in ${TZ}. If no time, default 09:00 local.
+- Always populate raw_text with salient exact text.
+- confidence in [0,1].
+Return STRICT JSON per schema. No extra commentary.`;
 
     const messages = [
       { role: "system", content: system },
@@ -194,30 +218,22 @@ Return STRICT JSON per the schema. No extra commentary.`;
       }
     ];
 
-    // Stage A: fast → powerful
-    const stageA = ["gpt-5-mini", "gpt-5", "gpt-4o-mini", "gpt-4o"];
-    const { best, attempts } = await tryModelsInOrder(stageA, messages);
+    const { best, attempts } = await tryModelsInOrder(
+      ["gpt-5-mini", "gpt-5", "gpt-4o-mini", "gpt-4o"],
+      messages
+    );
 
-    // If no attempt object (shouldn't happen), bail clearly
-    if (!best) {
-      return new Response("OpenAI call did not return any result", { status: 502 });
-    }
+    if (!best) return new Response("OpenAI call did not return any result", { status: 502 });
 
-    // If all attempts failed (non-2xx), return the last error so the client shows a real error
     if (!best.ok) {
-      // Log for server debugging
-      console.error("[classify] All attempts failed:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
+      console.error("[classify] all attempts failed:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
       return new Response(best.raw || `OpenAI error ${best.status} ${best.statusText}`, { status: best.status || 502 });
     }
 
-    // Success path: return parsed JSON (even if UNKNOWN, though with our fallbacks that should be rare)
     const final = best.parsed!;
     return new Response(JSON.stringify(final), { headers: { "Content-Type": "application/json" } });
-
   } catch (e: any) {
     console.error("[classify] exception", e);
     return new Response(JSON.stringify({ error: e?.message || "Failed" }), { status: 500 });
   }
 }
-
-
