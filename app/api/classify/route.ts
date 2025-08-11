@@ -1,12 +1,10 @@
-// app/api/classify/route.ts
 import { NextRequest } from "next/server";
 import type { BoardUnderstanding } from "@/lib/types";
 
 export const runtime = "nodejs";
-
 const TZ = "America/Chicago";
 
-// Strict JSON Schema (all keys required; nullable where optional)
+// Strict JSON Schema (all keys listed; nullable where optional)
 const jsonSchema = {
   name: "board_understanding",
   strict: true,
@@ -14,14 +12,13 @@ const jsonSchema = {
     type: "object",
     additionalProperties: false,
     properties: {
-      type: { type: "string", enum: ["PROBLEM_UNSOLVED", "PROBLEM_SOLVED", "ANNOUNCEMENT", "UNKNOWN"] },
-      subject_guess: { type: ["string", "null"] },
+      type: { type: "string", enum: ["PROBLEM_UNSOLVED","PROBLEM_SOLVED","ANNOUNCEMENT","UNKNOWN"] },
+      subject_guess: { type: ["string","null"] },
       confidence: { type: "number" },
-      raw_text: { type: ["string", "null"] },
+      raw_text: { type: ["string","null"] },
 
-      // Problems
-      question: { type: ["string", "null"] },
-      given_answer: { type: ["string", "null"] },
+      question: { type: ["string","null"] },
+      given_answer: { type: ["string","null"] },
       steps: {
         type: "array",
         items: {
@@ -29,18 +26,23 @@ const jsonSchema = {
           additionalProperties: false,
           properties: {
             n: { type: "integer" },
-            text: { type: "string" }
+            text: { type: "string" },
+            action: { type: ["string","null"] },
+            before: { type: ["string","null"] },
+            after: { type: ["string","null"] },
+            why: { type: ["string","null"] },
+            tip: { type: ["string","null"] },
+            emoji: { type: ["string","null"] }
           },
-          required: ["n", "text"]
+          required: ["n","text","action","before","after","why","tip","emoji"]
         }
       },
-      final: { type: ["string", "null"] },
+      final: { type: ["string","null"] },
       answer_status: {
-        type: ["string", "null"],
-        enum: ["matches", "mismatch", "no_answer_on_board", "not_applicable", null]
+        type: ["string","null"],
+        enum: ["matches","mismatch","no_answer_on_board","not_applicable", null]
       },
 
-      // Announcements
       events: {
         type: "array",
         items: {
@@ -49,49 +51,27 @@ const jsonSchema = {
           properties: {
             title: { type: "string" },
             date_start_iso: { type: "string" },
-            date_end_iso: { type: ["string", "null"] },
-            location: { type: ["string", "null"] },
-            notes: { type: ["string", "null"] }
+            date_end_iso: { type: ["string","null"] },
+            location: { type: ["string","null"] },
+            notes: { type: ["string","null"] }
           },
-          // strict requires EVERY key listed, even if it will be null
-          required: ["title", "date_start_iso", "date_end_iso", "location", "notes"]
+          required: ["title","date_start_iso","date_end_iso","location","notes"]
         }
       }
     },
-    // same rule at top level: require every key; use null/[] for “optional”
     required: [
-      "type",
-      "subject_guess",
-      "confidence",
-      "raw_text",
-      "question",
-      "given_answer",
-      "steps",
-      "final",
-      "answer_status",
-      "events"
+      "type","subject_guess","confidence","raw_text",
+      "question","given_answer","steps","final","answer_status","events"
     ]
   }
 } as const;
 
-// ---------- helpers ----------
-function clamp01(n: number | undefined): number {
+function clamp01(n: number | undefined) {
   if (typeof n !== "number" || Number.isNaN(n)) return 0.5;
   return Math.max(0, Math.min(1, n));
 }
-function tryParse<T>(s: string): T | null {
-  try { return JSON.parse(s) as T; } catch { return null; }
-}
-function scoreResult(p: BoardUnderstanding | null): number {
-  if (!p) return 0;
-  const conf = clamp01(p.confidence);
-  const hasSteps = Array.isArray(p.steps) && p.steps.length > 0 ? 0.2 : 0;
-  const hasEvents = Array.isArray(p.events) && p.events.length > 0 ? 0.2 : 0;
-  const notUnknown = p.type && p.type !== "UNKNOWN" ? 0.2 : 0;
-  return conf + hasSteps + hasEvents + notUnknown;
-}
+function tryParse<T>(s: string): T | null { try { return JSON.parse(s) as T; } catch { return null; } }
 function ensureDefaults(p: any) {
-  // make sure all required keys exist with sane defaults
   const d = {
     type: "UNKNOWN",
     subject_guess: null,
@@ -106,19 +86,15 @@ function ensureDefaults(p: any) {
   };
   return { ...d, ...p };
 }
-function applyLightFallbacks(parsed: BoardUnderstanding | null): BoardUnderstanding | null {
+function applyLightFallbacks(parsed: BoardUnderstanding | null) {
   if (!parsed) return null;
-
-  // infer labels when possible
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.steps?.length) {
     parsed.type = parsed.given_answer ? "PROBLEM_SOLVED" : "PROBLEM_UNSOLVED";
   }
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.events?.length) {
     parsed.type = "ANNOUNCEMENT";
   }
-
   parsed.confidence = clamp01(parsed.confidence);
-
   if (parsed.type === "UNKNOWN" && parsed.raw_text) {
     const t = parsed.raw_text.toLowerCase();
     const ann = /(test|exam|quiz|homework|hw|due|assignment|project|presentation|friday|monday|tuesday|wednesday|thursday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t);
@@ -158,6 +134,15 @@ async function callModelOnce(model: string, messages: any) {
   return { ok: r.ok, status: r.status, statusText: r.statusText, raw: text, parsed };
 }
 
+function scoreResult(p: BoardUnderstanding | null) {
+  if (!p) return 0;
+  const conf = clamp01(p.confidence);
+  const hasSteps = Array.isArray(p.steps) && p.steps.length > 0 ? 0.2 : 0;
+  const hasEvents = Array.isArray(p.events) && p.events.length > 0 ? 0.2 : 0;
+  const notUnknown = p.type && p.type !== "UNKNOWN" ? 0.2 : 0;
+  return conf + hasSteps + hasEvents + notUnknown;
+}
+
 async function tryModelsInOrder(models: string[], messages: any) {
   const attempts: Array<Awaited<ReturnType<typeof callModelOnce>>> = [];
   for (const m of models) {
@@ -175,7 +160,6 @@ async function tryModelsInOrder(models: string[], messages: any) {
   return { best: attempts[attempts.length - 1] ?? null, attempts };
 }
 
-// ---------- route ----------
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -191,20 +175,25 @@ export async function POST(req: NextRequest) {
     const mime = file.type || "image/jpeg";
 
     const system = `You are a tutor + organizer reading a whiteboard/notebook photo.
-Classify into exactly one of:
-- PROBLEM_UNSOLVED
-- PROBLEM_SOLVED
-- ANNOUNCEMENT
-- UNKNOWN (only if unreadable/unrelated)
 
-Rules:
-- Prefer one of the first three; UNKNOWN only if unreadable.
-- For problems: short, numbered steps and a concise final (no chain-of-thought).
-- If the board shows an answer, re-derive and set answer_status.
-- For announcements: extract events[] with ISO 8601 in ${TZ}. If no time, default 09:00 local.
-- Always populate raw_text with salient exact text.
-- confidence in [0,1].
-Return STRICT JSON per schema. No extra commentary.`;
+Classify as one of:
+- PROBLEM_UNSOLVED (problem present, not fully solved)
+- PROBLEM_SOLVED (worked steps + final shown)
+- ANNOUNCEMENT (e.g., "Test Friday", "HW due Wed")
+- UNKNOWN only if unreadable/unrelated
+
+When it's a problem, produce *very simple* steps. For each step:
+- text: short instruction (5–12 words)
+- action: verb-led summary ("Multiply both sides by 4")
+- before/after: show the equation transformation if relevant (else null)
+- why: kid-friendly reason (<= 10 words)
+- tip: optional extra hint (<= 10 words)
+- emoji: one small emoji like 🧮 ➗ ✏️ ✅ ❗
+
+Also output a concise "final" answer when solving/re-deriving.
+For announcements, fill events[] with ISO in ${TZ}. If no time, default 09:00 local.
+Always set raw_text to the most salient exact text.
+Keep confidence in [0,1]. Return STRICT JSON only.`;
 
     const messages = [
       { role: "system", content: system },
@@ -224,9 +213,8 @@ Return STRICT JSON per schema. No extra commentary.`;
     );
 
     if (!best) return new Response("OpenAI call did not return any result", { status: 502 });
-
     if (!best.ok) {
-      console.error("[classify] all attempts failed:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
+      console.error("[classify] failures:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
       return new Response(best.raw || `OpenAI error ${best.status} ${best.statusText}`, { status: best.status || 502 });
     }
 
@@ -237,3 +225,4 @@ Return STRICT JSON per schema. No extra commentary.`;
     return new Response(JSON.stringify({ error: e?.message || "Failed" }), { status: 500 });
   }
 }
+
