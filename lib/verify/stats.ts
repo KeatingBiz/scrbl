@@ -1,57 +1,74 @@
 import type { BoardUnderstanding, Verification } from "@/lib/types";
+import { extractNumberList, approxEqual, gatherProblemText, parseNumber } from "./utils";
 
-function extractNumberList(text: string): number[] {
-  // find things like [1, 2, 3.5] or 1, 2, 3 in a line mentioning mean/average
-  const bracket = text.match(/\[(.*?)\]/);
-  let segment = bracket?.[1] ?? text;
-
-  // if we didn't find brackets, try to find a colon segment like "numbers: 1, 2, 3"
-  const colon = text.match(/(?:numbers?|data|values?)\s*[:\-]\s*([^\n]+)/i);
-  if (colon?.[1]) segment = colon[1];
-
-  const nums = (segment.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi) || []).map(parseFloat);
-  // filter out obvious junk (NaN) and keep at least 2 values
-  return nums.filter(n => Number.isFinite(n));
+function median(vals: number[]): number {
+  const a = [...vals].sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
-
-function extractMeanFromFinal(final?: string | null): number | null {
-  if (!final) return null;
-  // Look for "mean = 12.3" or "average = 12.3" or just a bare number if the text mentions mean
-  const m = final.match(/(?:mean|average)\s*=\s*(-?\d*\.?\d+(?:e[+-]?\d+)?)/i);
-  if (m) return parseFloat(m[1]);
-  const bare = final.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/);
-  return bare ? parseFloat(bare[0]) : null;
+function mean(vals: number[]): number { return vals.reduce((s, v) => s + v, 0) / vals.length; }
+function variance(vals: number[], sample = false): number {
+  const m = mean(vals);
+  const denom = sample ? vals.length - 1 : vals.length;
+  if (denom <= 0) return NaN;
+  return vals.reduce((s, v) => s + (v - m) ** 2, 0) / denom;
 }
+function stddev(vals: number[], sample = false): number { return Math.sqrt(variance(vals, sample)); }
 
-export function verifyStatsMean(result: BoardUnderstanding): Verification | null {
-  const blob = [result.question, result.raw_text, ...(result.steps || []).map(s => s.text || "")]
-    .filter(Boolean)
-    .join("\n");
-
-  // Heuristic: only run if it looks like a mean/average task
-  if (!/(mean|average)\b/i.test(blob + " " + (result.final || ""))) return null;
+export function verifyStats(result: BoardUnderstanding): Verification | null {
+  const blob = gatherProblemText(result.question, result.raw_text, result.steps);
+  const hasStats = /(mean|average|median|variance|std|standard deviation|sd)\b/i.test(
+    (blob + " " + (result.final || "")).toLowerCase()
+  );
+  if (!hasStats) return null;
 
   const nums = extractNumberList(blob);
   if (nums.length < 2) return null;
 
-  const computed = nums.reduce((a, b) => a + b, 0) / nums.length;
-  const target = extractMeanFromFinal(result.final);
-  if (target == null) return null;
+  const checks: Verification["checks"] = [];
+  const f = (result.final || "").toLowerCase();
 
-  const ok = Math.abs(computed - target) <= 1e-6;
+  // Mean
+  if (/mean|average/.test(f)) {
+    const reported = parseNumber(result.final || "");
+    if (reported != null) {
+      const m = mean(nums);
+      const ok = approxEqual(m, reported);
+      checks.push({ value: `mean=${reported}`, ok, lhs: m, rhs: reported, reason: ok ? null : "mean mismatch" });
+    }
+  }
 
-  return {
-    subject: "stats",
-    method: "stats-recompute",
-    allVerified: ok,
-    checks: [
-      {
-        value: `mean=${target}`,
-        ok,
-        lhs: computed,
-        rhs: target,
-        reason: ok ? null : "mean mismatch"
+  // Median
+  if (/median/.test(f)) {
+    const reported = parseNumber(result.final || "");
+    if (reported != null) {
+      const md = median(nums);
+      const ok = approxEqual(md, reported);
+      checks.push({ value: `median=${reported}`, ok, lhs: md, rhs: reported, reason: ok ? null : "median mismatch" });
+    }
+  }
+
+  // Variance / Std (try both population & sample)
+  if (/variance|std|standard deviation|sd/.test(f)) {
+    const reported = parseNumber(result.final || "");
+    if (reported != null) {
+      const vPop = variance(nums, false);
+      const vSam = variance(nums, true);
+      const sPop = Math.sqrt(vPop);
+      const sSam = Math.sqrt(vSam);
+
+      if (/variance/.test(f)) {
+        const ok = approxEqual(vPop, reported) || approxEqual(vSam, reported);
+        checks.push({ value: `variance=${reported}`, ok, lhs: vPop, rhs: reported, reason: ok ? null : "variance mismatch" });
+      } else {
+        const ok = approxEqual(sPop, reported) || approxEqual(sSam, reported);
+        checks.push({ value: `std=${reported}`, ok, lhs: sPop, rhs: reported, reason: ok ? null : "std mismatch" });
       }
-    ]
-  };
+    }
+  }
+
+  if (!checks.length) return null;
+  const allVerified = checks.every(c => c.ok);
+  return { subject: "stats", method: "stats-recompute", allVerified, checks };
 }
+
