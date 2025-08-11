@@ -1,10 +1,16 @@
+// app/api/classify/route.ts
 import { NextRequest } from "next/server";
 import type { BoardUnderstanding } from "@/lib/types";
 
 export const runtime = "nodejs";
 const TZ = "America/Chicago";
 
-// Strict JSON Schema (all keys listed; nullable where optional)
+/**
+ * STRICT Structured Output schema
+ * - Steps must include: action (words + numbers), before, after, text
+ * - We keep other fields from your types (why/tip/emoji) but they can be null
+ * - Top-level fields are all required; use null/[] where not applicable
+ */
 const jsonSchema = {
   name: "board_understanding",
   strict: true,
@@ -17,6 +23,7 @@ const jsonSchema = {
       confidence: { type: "number" },
       raw_text: { type: ["string","null"] },
 
+      // Problem fields
       question: { type: ["string","null"] },
       given_answer: { type: ["string","null"] },
       steps: {
@@ -26,12 +33,12 @@ const jsonSchema = {
           additionalProperties: false,
           properties: {
             n: { type: "integer" },
-            text: { type: "string" },
-            action: { type: ["string","null"] },
-            before: { type: ["string","null"] },
-            after: { type: ["string","null"] },
-            why: { type: ["string","null"] },
-            tip: { type: ["string","null"] },
+            text: { type: "string" },             // short instruction (<= 12 words)
+            action: { type: ["string","null"] },  // MUST include numbers/expressions when math
+            before: { type: ["string","null"] },  // equation BEFORE the operation
+            after: { type: ["string","null"] },   // equation AFTER the operation
+            why: { type: ["string","null"] },     // <= 10 words
+            tip: { type: ["string","null"] },     // <= 10 words
             emoji: { type: ["string","null"] }
           },
           required: ["n","text","action","before","after","why","tip","emoji"]
@@ -43,6 +50,7 @@ const jsonSchema = {
         enum: ["matches","mismatch","no_answer_on_board","not_applicable", null]
       },
 
+      // Announcement fields
       events: {
         type: "array",
         items: {
@@ -66,6 +74,7 @@ const jsonSchema = {
   }
 } as const;
 
+// ---------- helpers ----------
 function clamp01(n: number | undefined) {
   if (typeof n !== "number" || Number.isNaN(n)) return 0.5;
   return Math.max(0, Math.min(1, n));
@@ -88,13 +97,18 @@ function ensureDefaults(p: any) {
 }
 function applyLightFallbacks(parsed: BoardUnderstanding | null) {
   if (!parsed) return null;
+
+  // Infer label if we have clear signals
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.steps?.length) {
     parsed.type = parsed.given_answer ? "PROBLEM_SOLVED" : "PROBLEM_UNSOLVED";
   }
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.events?.length) {
     parsed.type = "ANNOUNCEMENT";
   }
+
   parsed.confidence = clamp01(parsed.confidence);
+
+  // Nudge UNKNOWN based on raw_text
   if (parsed.type === "UNKNOWN" && parsed.raw_text) {
     const t = parsed.raw_text.toLowerCase();
     const ann = /(test|exam|quiz|homework|hw|due|assignment|project|presentation|friday|monday|tuesday|wednesday|thursday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t);
@@ -102,6 +116,12 @@ function applyLightFallbacks(parsed: BoardUnderstanding | null) {
     if (ann && !prob) parsed.type = "ANNOUNCEMENT";
     else if (prob) parsed.type = "PROBLEM_UNSOLVED";
   }
+
+  // Tighten step count for readability: 3–4 steps max
+  if (Array.isArray(parsed.steps) && parsed.steps.length > 4) {
+    parsed.steps = parsed.steps.slice(0, 4);
+  }
+
   return parsed;
 }
 
@@ -114,7 +134,9 @@ async function callModelOnce(model: string, messages: any) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.1,
+      temperature: 0.0,                      // lock phrasing
+      top_p: 1,
+      max_tokens: 500,                       // cap output size
       response_format: { type: "json_schema", json_schema: jsonSchema },
       messages
     })
@@ -174,34 +196,37 @@ export async function POST(req: NextRequest) {
     const b64 = buf.toString("base64");
     const mime = file.type || "image/jpeg";
 
-    const system = `You are a tutor + organizer reading a whiteboard/notebook photo.
+    /**
+     * STYLE GUIDE (very important)
+     * - Keep 3–4 steps MAX. Prefer 3 when possible.
+     * - Every math step MUST include numbers or an expression in `action`.
+     * - For equations, ALWAYS include `before` and `after` exactly as simple ASCII math:
+     *   - exponents like x^2, fractions like (x+3)/4, products like 4x, roots like sqrt(x)
+     * - Keep `text` <= 12 words, `why`/`tip` <= 10 words.
+     * - Final must be explicit, e.g., "x = 4".
+     * - Controlled verbs (use one of these at the start of `action`):
+     *   ["Multiply both sides by","Divide both sides by","Add","Subtract","Distribute","Combine like terms","Factor","Move terms","Take square root (±)","Apply quadratic formula","Simplify"]
+     *
+     * Mini examples:
+     *  Step 1:
+     *   action: "Multiply both sides by 4"
+     *   before: "x/4 + 8/x = 3"
+     *   after:  "x + 32/x = 12"
+     *   text:   "Clear denominators."
+     *   why:    "Remove fractions."
+     *   tip:    "Multiply each term."
+     */
 
-Classify as one of:
-- PROBLEM_UNSOLVED (problem present, not fully solved)
-- PROBLEM_SOLVED (worked steps + final shown)
-- ANNOUNCEMENT (e.g., "Test Friday", "HW due Wed")
-- UNKNOWN only if unreadable/unrelated
-
-When it's a problem, produce *very simple* steps. For each step:
-- text: short instruction (5–12 words)
-- action: verb-led summary ("Multiply both sides by 4")
-- before/after: show the equation transformation if relevant (else null)
-- why: kid-friendly reason (<= 10 words)
-- tip: optional extra hint (<= 10 words)
-- emoji: one small emoji like 🧮 ➗ ✏️ ✅ ❗
-
-Also output a concise "final" answer when solving/re-deriving.
-For announcements, fill events[] with ISO in ${TZ}. If no time, default 09:00 local.
-Always set raw_text to the most salient exact text.
-Keep confidence in [0,1]. Return STRICT JSON only.`;
+    const system = `You are a tutoring assistant. Classify the photo and produce STRICT JSON per the schema.
+For PROBLEM_* types, output easy steps that a 12-year-old can follow and ALWAYS include numbers/expressions in 'action' and equation 'before' and 'after'.
+Keep language consistent, simple, and brief. Do NOT output any prose outside the JSON. Timezone for events: ${TZ}.`;
 
     const messages = [
       { role: "system", content: system },
       {
         role: "user",
         content: [
-          { type: "text", text: `Timezone for parsing dates: ${TZ}` },
-          { type: "text", text: "Return strict JSON matching the schema only." },
+          { type: "text", text: "Return strict JSON only. 3–4 steps max. Include final." },
           { type: "image_url", image_url: { url: `data:${mime};base64,${b64}`, detail: "high" as const } }
         ]
       }
@@ -213,6 +238,7 @@ Keep confidence in [0,1]. Return STRICT JSON only.`;
     );
 
     if (!best) return new Response("OpenAI call did not return any result", { status: 502 });
+
     if (!best.ok) {
       console.error("[classify] failures:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
       return new Response(best.raw || `OpenAI error ${best.status} ${best.statusText}`, { status: best.status || 502 });
@@ -225,4 +251,5 @@ Keep confidence in [0,1]. Return STRICT JSON only.`;
     return new Response(JSON.stringify({ error: e?.message || "Failed" }), { status: 500 });
   }
 }
+
 
