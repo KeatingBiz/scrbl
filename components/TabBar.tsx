@@ -23,11 +23,10 @@ export default function TabBar() {
               href={t.href}
               className={clsx(
                 "py-3 text-center text-sm transition",
-                active
-                  // exact logo green
-                  ? "font-semibold text-[#39FF14]"
-                  : "text-neutral-300 hover:text-white"
+                !active && "text-neutral-300 hover:text-white"
               )}
+              // exact logo green; this wins over any Tailwind class
+              style={active ? { color: "#39FF14", fontWeight: 600 } : undefined}
             >
               {t.label}
             </Link>
@@ -37,3 +36,4 @@ export default function TabBar() {
     </nav>
   );
 }
+
