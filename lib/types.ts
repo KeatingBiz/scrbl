@@ -19,10 +19,10 @@ export type VerificationMethod =
   | "algebra-substitution"
   | "stats-recompute"
   | "geometry-identity"
+  | "physics-kinematics"
+  | "finance-tvm"
   | "calculus-numeric"
-  | "physics-formula"
   | "chemistry-balance"
-  | "finance-recompute"
   | "none";
 
 export type Verification = {
@@ -32,9 +32,9 @@ export type Verification = {
   checks: Array<{
     value: string;                    // e.g., "x=4", "mean=6.25"
     ok: boolean;
-    lhs?: number;                     // used when we compare LHS vs RHS or recompute
-    rhs?: number;
-    reason?: string | null;           // e.g., "residual not zero"
+    lhs?: number;                     // recomputed
+    rhs?: number;                     // reported final
+    reason?: string | null;
   }>;
 };
 
@@ -68,5 +68,6 @@ export type BoardUnderstanding = {
   // Server-added (silent) verification:
   verification?: Verification;
 };
+
 
 
