@@ -16,7 +16,6 @@ export default function Home() {
     setErr(null);
     setBusy(true);
     try {
-      // preview for result page
       const reader = new FileReader();
       const dataUrl = await new Promise<string>((res, rej) => {
         reader.onload = () => res(String(reader.result));
@@ -29,10 +28,7 @@ export default function Home() {
       fd.append("image", file);
 
       const r = await fetch("/api/classify", { method: "POST", body: fd });
-      if (!r.ok) {
-        const text = await r.text();
-        throw new Error(text || `HTTP ${r.status}`);
-      }
+      if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
       const json = await r.json();
       sessionStorage.setItem("scrbl:lastResult", JSON.stringify(json));
 
@@ -48,7 +44,7 @@ export default function Home() {
   return (
     <div className="min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center text-center gap-4">
-        <Logo size="lg" />
+        <Logo size="lg" href={null} />
         <p className="text-sm text-neutral-300 max-w-xs">
           Snap a photo of the board to get a simple, step-by-step explanation. Make sure the writing is clear.
         </p>
@@ -77,5 +73,6 @@ export default function Home() {
     </div>
   );
 }
+
 
 
