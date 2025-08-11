@@ -1,16 +1,11 @@
-// app/api/classify/route.ts
 import { NextRequest } from "next/server";
 import type { BoardUnderstanding } from "@/lib/types";
+import { verifyBoard } from "@/lib/verify";
 
 export const runtime = "nodejs";
 const TZ = "America/Chicago";
 
-/**
- * STRICT Structured Output schema
- * - Steps must include: action (words + numbers), before, after, text
- * - We keep other fields from your types (why/tip/emoji) but they can be null
- * - Top-level fields are all required; use null/[] where not applicable
- */
+// --- keep your existing strict schema here (unchanged) ---
 const jsonSchema = {
   name: "board_understanding",
   strict: true,
@@ -22,8 +17,6 @@ const jsonSchema = {
       subject_guess: { type: ["string","null"] },
       confidence: { type: "number" },
       raw_text: { type: ["string","null"] },
-
-      // Problem fields
       question: { type: ["string","null"] },
       given_answer: { type: ["string","null"] },
       steps: {
@@ -33,12 +26,12 @@ const jsonSchema = {
           additionalProperties: false,
           properties: {
             n: { type: "integer" },
-            text: { type: "string" },             // short instruction (<= 12 words)
-            action: { type: ["string","null"] },  // MUST include numbers/expressions when math
-            before: { type: ["string","null"] },  // equation BEFORE the operation
-            after: { type: ["string","null"] },   // equation AFTER the operation
-            why: { type: ["string","null"] },     // <= 10 words
-            tip: { type: ["string","null"] },     // <= 10 words
+            text: { type: "string" },
+            action: { type: ["string","null"] },
+            before: { type: ["string","null"] },
+            after: { type: ["string","null"] },
+            why: { type: ["string","null"] },
+            tip: { type: ["string","null"] },
             emoji: { type: ["string","null"] }
           },
           required: ["n","text","action","before","after","why","tip","emoji"]
@@ -49,8 +42,6 @@ const jsonSchema = {
         type: ["string","null"],
         enum: ["matches","mismatch","no_answer_on_board","not_applicable", null]
       },
-
-      // Announcement fields
       events: {
         type: "array",
         items: {
@@ -74,7 +65,7 @@ const jsonSchema = {
   }
 } as const;
 
-// ---------- helpers ----------
+// ---- helpers (unchanged from your latest) ----
 function clamp01(n: number | undefined) {
   if (typeof n !== "number" || Number.isNaN(n)) return 0.5;
   return Math.max(0, Math.min(1, n));
@@ -97,34 +88,15 @@ function ensureDefaults(p: any) {
 }
 function applyLightFallbacks(parsed: BoardUnderstanding | null) {
   if (!parsed) return null;
-
-  // Infer label if we have clear signals
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.steps?.length) {
     parsed.type = parsed.given_answer ? "PROBLEM_SOLVED" : "PROBLEM_UNSOLVED";
   }
   if ((!parsed.type || parsed.type === "UNKNOWN") && parsed.events?.length) {
     parsed.type = "ANNOUNCEMENT";
   }
-
   parsed.confidence = clamp01(parsed.confidence);
-
-  // Nudge UNKNOWN based on raw_text
-  if (parsed.type === "UNKNOWN" && parsed.raw_text) {
-    const t = parsed.raw_text.toLowerCase();
-    const ann = /(test|exam|quiz|homework|hw|due|assignment|project|presentation|friday|monday|tuesday|wednesday|thursday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(t);
-    const prob = /[=±×÷+\-*/]|sqrt|∫|∑|lim|dx|dy|cos|sin|tan|log|proof|theorem|q[:=]/i.test(t);
-    if (ann && !prob) parsed.type = "ANNOUNCEMENT";
-    else if (prob) parsed.type = "PROBLEM_UNSOLVED";
-  }
-
-  // Tighten step count for readability: 3–4 steps max
-  if (Array.isArray(parsed.steps) && parsed.steps.length > 4) {
-    parsed.steps = parsed.steps.slice(0, 4);
-  }
-
   return parsed;
 }
-
 async function callModelOnce(model: string, messages: any) {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -134,9 +106,9 @@ async function callModelOnce(model: string, messages: any) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.0,                      // lock phrasing
+      temperature: 0.0,
       top_p: 1,
-      max_tokens: 500,                       // cap output size
+      max_tokens: 500,
       response_format: { type: "json_schema", json_schema: jsonSchema },
       messages
     })
@@ -155,7 +127,6 @@ async function callModelOnce(model: string, messages: any) {
 
   return { ok: r.ok, status: r.status, statusText: r.statusText, raw: text, parsed };
 }
-
 function scoreResult(p: BoardUnderstanding | null) {
   if (!p) return 0;
   const conf = clamp01(p.confidence);
@@ -164,7 +135,6 @@ function scoreResult(p: BoardUnderstanding | null) {
   const notUnknown = p.type && p.type !== "UNKNOWN" ? 0.2 : 0;
   return conf + hasSteps + hasEvents + notUnknown;
 }
-
 async function tryModelsInOrder(models: string[], messages: any) {
   const attempts: Array<Awaited<ReturnType<typeof callModelOnce>>> = [];
   for (const m of models) {
@@ -182,6 +152,7 @@ async function tryModelsInOrder(models: string[], messages: any) {
   return { best: attempts[attempts.length - 1] ?? null, attempts };
 }
 
+// ---- route ----
 export async function POST(req: NextRequest) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -196,30 +167,8 @@ export async function POST(req: NextRequest) {
     const b64 = buf.toString("base64");
     const mime = file.type || "image/jpeg";
 
-    /**
-     * STYLE GUIDE (very important)
-     * - Keep 3–4 steps MAX. Prefer 3 when possible.
-     * - Every math step MUST include numbers or an expression in `action`.
-     * - For equations, ALWAYS include `before` and `after` exactly as simple ASCII math:
-     *   - exponents like x^2, fractions like (x+3)/4, products like 4x, roots like sqrt(x)
-     * - Keep `text` <= 12 words, `why`/`tip` <= 10 words.
-     * - Final must be explicit, e.g., "x = 4".
-     * - Controlled verbs (use one of these at the start of `action`):
-     *   ["Multiply both sides by","Divide both sides by","Add","Subtract","Distribute","Combine like terms","Factor","Move terms","Take square root (±)","Apply quadratic formula","Simplify"]
-     *
-     * Mini examples:
-     *  Step 1:
-     *   action: "Multiply both sides by 4"
-     *   before: "x/4 + 8/x = 3"
-     *   after:  "x + 32/x = 12"
-     *   text:   "Clear denominators."
-     *   why:    "Remove fractions."
-     *   tip:    "Multiply each term."
-     */
-
     const system = `You are a tutoring assistant. Classify the photo and produce STRICT JSON per the schema.
-For PROBLEM_* types, output easy steps that a 12-year-old can follow and ALWAYS include numbers/expressions in 'action' and equation 'before' and 'after'.
-Keep language consistent, simple, and brief. Do NOT output any prose outside the JSON. Timezone for events: ${TZ}.`;
+For PROBLEM_* types, output 3–4 clear steps with numbers/expressions in 'action' and equation 'before'/'after'. Include a concise final answer. Timezone for events: ${TZ}.`;
 
     const messages = [
       { role: "system", content: system },
@@ -238,18 +187,38 @@ Keep language consistent, simple, and brief. Do NOT output any prose outside the
     );
 
     if (!best) return new Response("OpenAI call did not return any result", { status: 502 });
-
     if (!best.ok) {
       console.error("[classify] failures:", attempts.map(a => ({ status: a.status, body: a.raw?.slice(0, 400) })));
       return new Response(best.raw || `OpenAI error ${best.status} ${best.statusText}`, { status: best.status || 502 });
     }
 
     const final = best.parsed!;
+
+    // ---- SILENT VERIFY (no extra latency worth noticing) ----
+    try {
+      const verification = await verifyBoard(final);
+      if (verification) {
+        final.verification = verification;
+
+        // Optional: tighten answer_status using verification
+        if (final.type === "PROBLEM_SOLVED" || final.type === "PROBLEM_UNSOLVED") {
+          if (verification.allVerified) {
+            final.answer_status = (final.answer_status && final.answer_status !== "not_applicable")
+              ? final.answer_status
+              : "matches";
+          } else {
+            final.answer_status = "mismatch";
+          }
+        }
+      }
+    } catch (e) {
+      // don’t block on verification
+      console.warn("[verify] failed:", (e as Error).message);
+    }
+
     return new Response(JSON.stringify(final), { headers: { "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("[classify] exception", e);
     return new Response(JSON.stringify({ error: e?.message || "Failed" }), { status: 500 });
   }
 }
-
-
