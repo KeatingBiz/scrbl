@@ -54,10 +54,11 @@ export default function Home() {
           <div className="text-left text-sm font-medium mb-2">Take a picture</div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className="flex-1 rounded-xl py-3 bg-scrbl/20 text-scrbl font-semibold hover:bg-scrbl/30 transition disabled:opacity-60"
-            >
+  onClick={() => fileRef.current?.click()}
+  disabled={busy}
+  className="btn-scrbl flex-1 rounded-xl py-3 transition disabled:opacity-60"
+/>
+
               {busy ? "Analyzing…" : "Open Camera / Upload"}
             </button>
             <input
