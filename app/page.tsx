@@ -44,6 +44,7 @@ export default function Home() {
   return (
     <div className="min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center text-center gap-4">
+        {/* Bigger center logo */}
         <Logo size="lg" href={null} />
         <p className="text-sm text-neutral-300 max-w-xs">
           Snap a photo of the board to get a simple, step-by-step explanation. Make sure the writing is clear.
@@ -73,6 +74,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
