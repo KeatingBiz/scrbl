@@ -23,7 +23,10 @@ export default function TabBar() {
               href={t.href}
               className={clsx(
                 "py-3 text-center text-sm transition",
-                active ? "text-scrbl font-semibold" : "text-neutral-300 hover:text-white"
+                active
+                  // exact logo green
+                  ? "font-semibold text-[#39FF14]"
+                  : "text-neutral-300 hover:text-white"
               )}
             >
               {t.label}
