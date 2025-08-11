@@ -1,3 +1,4 @@
+// lib/verify/algebra.ts
 import { Parser } from "expr-eval";
 import type { BoardUnderstanding, Verification } from "@/lib/types";
 
@@ -35,11 +36,10 @@ function valuesFromFinal(final?: string | null, variable = "x"): string[] {
   const eqIdx = final.indexOf("=");
   if (eqIdx >= 0) rhs = final.slice(eqIdx + 1);
 
-  // Handle "a or b" style quickly
   const parts: string[] = [];
-  // expand ± if present
+
+  // Handle "±" if present (best-effort numeric eval)
   if (rhs.includes("±")) {
-    // try forms like "6 ± 2" or "6 ± sqrt(36)"
     const [baseS, deltaS] = rhs.split("±").map(t => t.trim());
     try {
       const p = new Parser();
@@ -47,16 +47,16 @@ function valuesFromFinal(final?: string | null, variable = "x"): string[] {
       const delta = p.parse(norm(deltaS)).evaluate({});
       parts.push(String(base + delta), String(base - delta));
     } catch {
-      // fall back to text split
+      // fall through; we'll also split below
     }
   }
-  // split on "or" / commas
+
+  // Split on "or", "and", or commas
   rhs.split(/\bor\b|,|and/gi).forEach(t => {
     const str = t.trim();
     if (str) parts.push(str);
   });
 
-  // De-dup & format like "x=VALUE"
   const uniq = Array.from(new Set(parts.map(s => s.trim()).filter(Boolean)));
   return uniq.map(v => `${variable}=${v}`);
 }
@@ -81,9 +81,12 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
   const [lhsS, rhsS] = equation.split("=");
   if (!lhsS || !rhsS) return null;
 
-  // parse candidate values from 'final'
+  // Parse candidate values from 'final'
   const candidates = valuesFromFinal(result.final, variable);
   if (candidates.length === 0) return null;
+
+  // Precompute a compact expression string for quick domain checks (e.g., "/x")
+  const exprCompact = (lhsS + rhsS).replace(/\s+|\(|\)/g, "").toLowerCase();
 
   const checks: Verification["checks"] = [];
   for (const c of candidates) {
@@ -91,13 +94,13 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
     const valStr = c.split("=")[1]?.trim() || "";
     const val = safeEval(valStr, {}) ?? Number.NaN;
 
-    // domain guard: obvious x=0 with "/x" present
-    if (val === 0 && /\/\s*0*\s*[*)]*\s*[a-z]*\b?x\b/i.test(lhsS + rhsS)) {
+    // Simple division-by-zero guard: if value is 0 and "/x" (or "/y", etc.) appears
+    if (val === 0 && exprCompact.includes(`/${variable.toLowerCase()}`)) {
       checks.push({ value: c, ok: false, reason: "division by zero" });
       continue;
     }
 
-    // evaluate both sides
+    // Evaluate both sides numerically
     const vars: Record<string, number> = { [variable]: val };
     const L = safeEval(lhsS, vars);
     const R = safeEval(rhsS, vars);
@@ -120,3 +123,4 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
     checks
   };
 }
+
