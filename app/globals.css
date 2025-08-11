@@ -1,48 +1,39 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+// components/TabBar.tsx
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import clsx from "clsx";
 
-/* App theme */
-:root {
-  color-scheme: dark;
-  --scrbl: #39FF14; /* neon */
+const tabs = [
+  { href: "/", label: "Scrbl" },
+  { href: "/gallery", label: "Gallery" },
+  { href: "/calendar", label: "Calendar" },
+];
+
+export default function TabBar() {
+  const pathname = usePathname() || "/";
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-black/70 backdrop-blur supports-[backdrop-filter]:bg-black/40">
+      <div className="mx-auto max-w-md grid grid-cols-3">
+        {tabs.map((t) => {
+          const active = pathname === t.href || (t.href !== "/" && pathname.startsWith(t.href));
+          return (
+            <Link
+              key={t.href}
+              href={t.href}
+              className={clsx(
+                "py-3 text-center text-sm transition",
+                active ? "tab-active text-scrbl font-semibold" : "text-neutral-300 hover:text-white"
+              )}
+              style={active ? { color: "#2AEF7C" } : undefined}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
 }
 
-html, body {
-  height: 100%;
-  background: #000;
-  color: #fff;
-}
-
-* { -webkit-tap-highlight-color: transparent; }
-::selection { background: rgba(57, 255, 20, 0.25); color: #fff; }
-
-/* Media defaults */
-img, video { max-width: 100%; height: auto; display: block; }
-
-/* Notebook-style background for step cards */
-.notebook {
-  background:
-    linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px) 0 0 / 100% 28px,
-    rgba(0,0,0,0.25);
-}
-
-/* Subtle focus ring for keyboard users */
-:focus-visible {
-  outline: 2px solid var(--scrbl);
-  outline-offset: 2px;
-}
-
-  /* Brand color hard-override for active nav and brand buttons */
-.tab-active {
-  color: #39FF14 !important;         /* exact logo green */
-  font-weight: 600 !important;
-}
-.btn-scrbl {
-  background-color: color-mix(in srgb, #39FF14 20%, transparent) !important;
-  color: #39FF14 !important;
-}
-.btn-scrbl:hover {
-  background-color: color-mix(in srgb, #39FF14 30%, transparent) !important;
-}
 
