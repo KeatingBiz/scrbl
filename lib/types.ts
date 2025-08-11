@@ -6,13 +6,26 @@ export type BoardType =
 
 export type Step = {
   n: number;
-  text: string;                // plain, simple instruction
-  action: string | null;       // e.g., "Multiply both sides by 4"
-  before: string | null;       // "x/4 + 8/x = 3"
-  after: string | null;        // "x^2 + 32 = 12x"
-  why: string | null;          // 1-liner reason
-  tip: string | null;          // extra hint
-  emoji: string | null;        // small vibe marker, e.g., "🧮"
+  text: string;
+  action: string | null;
+  before: string | null;
+  after: string | null;
+  why: string | null;
+  tip: string | null;
+  emoji: string | null;
+};
+
+export type Verification = {
+  subject: string | null;                  // e.g., "algebra"
+  method: "algebra-substitution" | "none";
+  allVerified: boolean;
+  checks: Array<{
+    value: string;                         // "x=4"
+    ok: boolean;
+    lhs?: number;
+    rhs?: number;
+    reason?: string | null;                // e.g., "division by zero"
+  }>;
 };
 
 export type BoardUnderstanding = {
@@ -21,7 +34,7 @@ export type BoardUnderstanding = {
   confidence: number;
   raw_text?: string | null;
 
-  // Problems:
+  // Problems
   question?: string | null;
   given_answer?: string | null;
   steps?: Step[];
@@ -33,7 +46,7 @@ export type BoardUnderstanding = {
     | "not_applicable"
     | null;
 
-  // Announcements:
+  // Announcements
   events?: Array<{
     title: string;
     date_start_iso: string;
@@ -41,5 +54,8 @@ export type BoardUnderstanding = {
     location?: string | null;
     notes?: string | null;
   }>;
+
+  // Server-added (silent) verification
+  verification?: Verification;
 };
 
