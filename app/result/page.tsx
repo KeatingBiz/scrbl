@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BoardUnderstanding, Step } from "@/lib/types";
+import type { AppEvent } from "@/lib/calendar";
+import { useEvents } from "@/app/hooks/useEvents";
 
 type EventItem = NonNullable<BoardUnderstanding["events"]>[number];
 
@@ -56,6 +58,8 @@ export default function ResultPage() {
   const router = useRouter();
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [result, setResult] = useState<BoardUnderstanding | null>(null);
+  const [addedCount, setAddedCount] = useState<number>(0);
+  const { upsertMany } = useEvents();
 
   useEffect(() => {
     const img = sessionStorage.getItem("scrbl:lastImage");
@@ -64,6 +68,26 @@ export default function ResultPage() {
     setDataUrl(img);
     setResult(JSON.parse(res) as BoardUnderstanding);
   }, [router]);
+
+  // Auto-add announcements to in-app calendar (once per load)
+  useEffect(() => {
+    if (!result || result.type !== "ANNOUNCEMENT") return;
+    const evs = (result.events ?? []).filter(Boolean);
+    if (!evs.length) return;
+
+    // Basic de-dupe: same title + startISO will be upserted by the hook
+    const toAdd: Partial<AppEvent>[] = evs.map((e) => ({
+      title: e.title,
+      startISO: e.date_start_iso,
+      endISO: e.date_end_iso ?? null,
+      location: e.location ?? null,
+      notes: result.raw_text || undefined,
+      source: "board",
+      notifyDaysBefore: 2
+    }));
+    upsertMany(toAdd);
+    setAddedCount(evs.length);
+  }, [result, upsertMany]);
 
   const title = useMemo(() => {
     if (!result) return "";
@@ -76,7 +100,7 @@ export default function ResultPage() {
   }, [result]);
 
   async function addToCalendar(ev: EventItem) {
-    const r = await fetch("/api/calendar/ics", {
+    const r = await fetch(`/api/calendar/ics`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -106,11 +130,17 @@ export default function ResultPage() {
         <div className="mt-2 flex gap-2 flex-wrap">
           {result?.subject_guess ? <Chip>{result.subject_guess}</Chip> : null}
           {result?.type ? <Chip>{result.type.replace("_", " ")}</Chip> : null}
-          {/* Hide confidence unless < 70% */}
           {typeof result?.confidence === "number" && result.confidence < 0.7 && (
             <Chip>Confidence: {(result.confidence * 100).toFixed(0)}%</Chip>
           )}
         </div>
+
+        {result?.type === "ANNOUNCEMENT" && addedCount > 0 && (
+          <div className="mt-3 text-xs text-emerald-300">
+            ✅ Added {addedCount} event{addedCount > 1 ? "s" : ""} to your in-app calendar.{" "}
+            <a href="/calendar" className="underline hover:no-underline">Open calendar</a>
+          </div>
+        )}
       </div>
 
       {dataUrl && (
@@ -141,18 +171,28 @@ export default function ResultPage() {
       {result?.type === "ANNOUNCEMENT" && (
         <div className="w-full max-w-md space-y-3">
           <div className="rounded-xl bg-black/30 border border-white/10 p-3">
-            <div className="text-sm text-neutral-300 whitespace-pre-wrap">{result.raw_text || "Announcement"}</div>
+            <div className="text-sm text-neutral-300 whitespace-pre-wrap">
+              {result.raw_text || "Announcement"}
+            </div>
           </div>
-          {(result?.events ?? []).map((ev: EventItem, i: number) => (
+          {(result?.events ?? []).map((ev, i) => (
             <div key={i} className="rounded-xl bg-black/30 border border-white/10 p-3">
               <div className="font-semibold">{ev.title}</div>
               <div className="text-xs text-neutral-400 mt-1">{ev.date_start_iso}</div>
-              <button
-                onClick={() => addToCalendar(ev)}
-                className="mt-3 w-full rounded-xl py-2 bg-scrbl/20 text-scrbl font-semibold hover:bg-scrbl/30 transition"
-              >
-                Add to Calendar (+ 2-day alert)
-              </button>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => addToCalendar(ev)}
+                  className="flex-1 rounded-xl py-2 bg-scrbl/20 text-scrbl font-semibold hover:bg-scrbl/30 transition"
+                >
+                  Add to native (.ics)
+                </button>
+                <a
+                  href="/calendar"
+                  className="flex-1 text-center rounded-xl py-2 bg-white/5 text-white hover:bg-white/10 transition"
+                >
+                  View in-app
+                </a>
+              </div>
             </div>
           ))}
         </div>
@@ -175,4 +215,5 @@ export default function ResultPage() {
     </div>
   );
 }
+
 
