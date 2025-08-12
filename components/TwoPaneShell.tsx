@@ -88,8 +88,8 @@ export default function TwoPaneShell({
           const currentX = x.get();
           const progress = Math.min(1, Math.max(0, -currentX / w)); // 0..1
 
-          // Strict 50% rule: > 0.5 goes to right pane, else left.
-          const target: 0 | 1 = progress > 0.5 ? 1 : 0;
+          // Strict 40% rule: > 0.4 goes to right pane, else left.
+          const target: 0 | 1 = progress > 0.4 ? 1 : 0;
 
           // If target is the same as current route, just snap back; else commit (animate + push)
           if (target === active) {
