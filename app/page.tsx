@@ -112,7 +112,6 @@ export default function Home() {
       </div>
 
       {/* Hidden inputs */}
-      {/* @ts-expect-error capture is supported on mobile browsers */}
       <input
         ref={cameraRef}
         type="file"
@@ -134,7 +133,6 @@ export default function Home() {
         <div
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
           onClick={(e) => {
-            // close if clicking backdrop only
             if (e.target === e.currentTarget) setChooserOpen(false);
           }}
         >
@@ -143,19 +141,13 @@ export default function Home() {
             <div className="flex flex-col gap-2">
               <button
                 className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => {
-                  // open camera
-                  cameraRef.current?.click();
-                }}
+                onClick={() => cameraRef.current?.click()}
               >
                 Take Photo
               </button>
               <button
                 className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => {
-                  // open photo library
-                  libraryRef.current?.click();
-                }}
+                onClick={() => libraryRef.current?.click()}
               >
                 Choose from Library
               </button>
@@ -172,9 +164,3 @@ export default function Home() {
     </div>
   );
 }
-
-
-
-
-
-
