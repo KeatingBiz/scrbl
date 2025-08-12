@@ -9,8 +9,6 @@ const step = (before: string | null = null): any => ({
 
 type Case = { subject: string; name: string; expectPass: boolean; board: BoardUnderstanding };
 
-function push<T>(arr: T[], ...items: T[]) { items.forEach(i => arr.push(i)); }
-
 /** ==== Generators (fast, no files, all in-memory) ==== */
 // Algebra: ax + b = c  and simple quadratics x^2 + px + q = 0
 function genAlgebra(count = 150): Case[] {
@@ -71,7 +69,7 @@ function genAlgebra(count = 150): Case[] {
   return out;
 }
 
-// Stats: mean and std (plugin accepts pop/sample either way)
+// Stats: mean and (population) std
 function genStats(count = 150): Case[] {
   const out: Case[] = [];
   for (let i = 0; i < count; i++) {
@@ -196,11 +194,12 @@ function genPhysics(count = 150): Case[] {
 /** ==== Runner: sequential loop, prints summary ==== */
 async function main() {
   // Adjust counts here if you want more/less per subject:
-  const cases: Case[] = []
-    .concat(genAlgebra(150))
-    .concat(genStats(150))
-    .concat(genFinance(150))
-    .concat(genPhysics(150));
+  const cases: Case[] = [
+    ...genAlgebra(150),
+    ...genStats(150),
+    ...genFinance(150),
+    ...genPhysics(150),
+  ];
 
   const bySubj: Record<string, { total: number; passed: number; failed: number }> = {};
   let total = 0, okAll = 0, failAll = 0;
@@ -213,10 +212,8 @@ async function main() {
     let v: Verification | null = null;
     try {
       v = await verifyBoard(k.board);
-    } catch (e: any) {
+    } catch {
       failAll++; bySubj[k.subject].failed++;
-      // Uncomment to see specific errors:
-      // console.log(`❌ ${k.subject}/${k.name} — verifier threw: ${e?.message}`);
       continue;
     }
 
@@ -226,8 +223,6 @@ async function main() {
       okAll++; bySubj[k.subject].passed++;
     } else {
       failAll++; bySubj[k.subject].failed++;
-      // Uncomment for detailed mismatches:
-      // console.log(`❌ ${k.subject}/${k.name} — expected ${k.expectPass} got ${gotPass}`);
     }
   }
 
