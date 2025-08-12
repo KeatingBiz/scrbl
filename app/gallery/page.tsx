@@ -3,67 +3,54 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-
-type Folder = { id: string; name: string };
-
-const FOLDERS_KEY = "scrbl:folders:v2";
-const RECENTS_ID = "recents";
-
-function loadFolders(): Folder[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(FOLDERS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Folder[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-function saveFolders(folders: Folder[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
-}
+import { getFolders, addFolder, getItemsForFolder, getItems, type Folder, type SavedItem } from "@/lib/storage";
 
 function chipClasses(active = false) {
   return [
-    // equal-size chip inside grid cell
     "inline-flex w-full h-9 items-center justify-center",
-    // visuals
     "px-3 rounded-full text-sm border transition",
     "text-white",
     active ? "border-scrbl bg-white/5" : "border-scrbl/50 hover:bg-white/5",
-    // text handling
     "truncate"
   ].join(" ");
 }
 
 export default function ClassesPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [active, setActive] = useState<string>(RECENTS_ID);
+  const [active, setActive] = useState<string>("recents");
 
-  useEffect(() => { setFolders(loadFolders()); }, []);
+  useEffect(() => { setFolders(getFolders()); }, []);
 
   function addClassFolder() {
     const name = (prompt("Class name (e.g., Finance 331)") || "").trim();
     if (!name) return;
-    const exists = folders.some((f) => f.name.toLowerCase() === name.toLowerCase());
-    if (exists) { alert("You already have a folder with that name."); return; }
-    const id = crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
-    const next = [...folders, { id, name }];
-    setFolders(next); saveFolders(next); setActive(id);
+    if (folders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+      alert("You already have a folder with that name.");
+      return;
+    }
+    const f = addFolder(name);
+    const next = [...folders, f];
+    setFolders(next);
+    setActive(f.id);
   }
 
-  // Recents shows the last captured image (visual only for now)
-  const recentThumb = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem("scrbl:lastImage");
-  }, []);
+  const isRecents = active === "recents";
+  const items: SavedItem[] = useMemo(() => {
+    return isRecents ? getItems() : getItemsForFolder(active);
+  }, [active, isRecents]);
 
-  const title = useMemo(() => {
-    if (active === RECENTS_ID) return "Recents";
-    const f = folders.find((x) => x.id === active);
-    return f?.name || "Class";
-  }, [active, folders]);
+  const title = isRecents
+    ? "Recents"
+    : (folders.find(x => x.id === active)?.name || "Class");
 
-  const itemCount = active === RECENTS_ID ? (recentThumb ? 1 : 0) : 0;
+  const itemCount = items.length;
+
+  function openItem(it: SavedItem) {
+    // hydrate /result page
+    sessionStorage.setItem("scrbl:lastImage", it.imageDataUrl);
+    sessionStorage.setItem("scrbl:lastResult", JSON.stringify(it.result));
+    location.assign("/result");
+  }
 
   return (
     <div className="min-h-screen p-6 flex flex-col items-center gap-6">
@@ -73,18 +60,13 @@ export default function ClassesPage() {
         <h1 className="text-2xl font-bold">Classes</h1>
       </div>
 
-      {/* Folder chips — equal-width grid that fills each row */}
+      {/* Chips grid (even spacing) */}
       <div className="w-full max-w-md">
         <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
-          <button
-            className={chipClasses(active === RECENTS_ID)}
-            onClick={() => setActive(RECENTS_ID)}
-            title="Recents"
-          >
+          <button className={chipClasses(isRecents)} onClick={() => setActive("recents")} title="Recents">
             Recents
           </button>
-
-          {folders.map((f) => (
+          {folders.map(f => (
             <button
               key={f.id}
               className={chipClasses(active === f.id)}
@@ -94,14 +76,13 @@ export default function ClassesPage() {
               {f.name}
             </button>
           ))}
-
           <button className={chipClasses(false)} onClick={addClassFolder} title="Add Class">
             + Add Class
           </button>
         </div>
       </div>
 
-      {/* Active folder content */}
+      {/* Items */}
       <section className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-2">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -110,35 +91,33 @@ export default function ClassesPage() {
           </span>
         </div>
 
-        {active === RECENTS_ID ? (
-          recentThumb ? (
-            <div className="grid grid-cols-3 gap-2">
-              <Link href="/result" className="block group">
+        {itemCount === 0 ? (
+          <div className="text-xs text-neutral-500 border border-dashed border-white/10 rounded-xl p-6 text-center">
+            {isRecents ? "No snaps yet. Your next capture will appear here." : "Nothing in this class yet. Add from the result popup."}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {items.map(it => (
+              <button
+                key={it.id}
+                onClick={() => openItem(it)}
+                className="group block text-left"
+              >
                 <div className="aspect-square overflow-hidden rounded-lg border border-white/10 bg-black/30">
                   <img
-                    src={recentThumb}
-                    alt="recent scrbl"
+                    src={it.imageDataUrl}
+                    alt=""
                     className="w-full h-full object-cover group-hover:scale-[1.02] transition"
                   />
                 </div>
-                <div className="mt-1 text-xs text-neutral-400">Latest snap</div>
-              </Link>
-            </div>
-          ) : (
-            <div className="text-xs text-neutral-500 border border-dashed border-white/10 rounded-xl p-6 text-center">
-              No recent snaps yet. Your next capture will appear here.
-            </div>
-          )
-        ) : (
-          <div className="text-xs text-neutral-500 border border-dashed border-white/10 rounded-xl p-6 text-center">
-            Nothing in this class yet. After your next scrbl, you’ll be able to add it here.
+                <div className="mt-1 text-[10px] text-neutral-400 truncate">
+                  {new Date(it.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </div>
+              </button>
+            ))}
           </div>
         )}
       </section>
     </div>
   );
 }
-
-
-
-
