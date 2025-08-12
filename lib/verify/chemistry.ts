@@ -45,7 +45,6 @@ function parseFormulaChunk(formula: string): ElemCount {
       if (ch === "(" || ch === "[" || ch === "{") {
         i++;
         const inner = parseGroup();
-        // expect closing
         if (i < formula.length && (formula[i] === ")" || formula[i] === "]" || formula[i] === "}")) i++;
         const mult = readNumber() ?? 1;
         counts = mergeCounts(counts, inner, mult);
@@ -62,14 +61,12 @@ function parseFormulaChunk(formula: string): ElemCount {
         const mult = readNumber() ?? 1;
         counts[sym] = (counts[sym] || 0) + mult;
       } else if (/\d/.test(ch)) {
-        // leading coefficient for a group (rare in formula alone)
+        // leading coefficient for a group
         const mult = readNumber() ?? 1;
-        // apply to next group
         const next = parseGroup();
         counts = mergeCounts(counts, next, mult);
       } else {
-        // unknown char, skip
-        i++;
+        i++; // skip unknown
       }
     }
     return counts;
@@ -159,16 +156,13 @@ function balanceEquation(eq: Equation): number[] | null {
     r++; c++;
   }
 
-  // Choose last variable as free = 1, backsolve others
+  // Choose a free variable = 1, backsolve others
   const x = Array(cols).fill(0);
   const freeIdx = new Set<number>(Array.from({ length: cols }, (_, j) => j));
   pivots.forEach((p) => freeIdx.delete(p));
-  // if no free var, pick the last one
   const fIdx = freeIdx.size ? Array.from(freeIdx)[0] : cols - 1;
   x[fIdx] = 1;
 
-  // backsolve: for each pivot row r where pivot at col p, sum_{j>p} a_{rj} x_j + a_{rp} x_p = 0
-  // Since row is reduced, a_{rp}=1, so x_p = - sum a_{rj} x_j
   for (let irow = 0; irow < rows; irow++) {
     const row = M[irow];
     const pcol = row.findIndex((v) => Math.abs(v - 1) < 1e-9);
@@ -178,26 +172,25 @@ function balanceEquation(eq: Equation): number[] | null {
     x[pcol] = -sum;
   }
 
-  // Scale to smallest integers
+  // Scale to smallest positive integers
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : Math.abs(a));
+  const lcm = (a: number, b: number) => (!a || !b) ? a || b : Math.abs(a * b) / gcd(a, b);
+
   const fracs = x.map((v) => {
-    const s = v.toString();
-    const m = s.match(/\.(\d+)?(?:e([+-]\d+))?$/i);
+    const s = String(v);
+    const m = s.match(/\.(\d+)(?:e([+-]\d+))?$/i);
     if (!m) return { num: v, den: 1 };
-    // convert to fraction by decimal digits
     const digits = (m[1] || "").length;
     const den = Math.pow(10, digits);
     const num = Math.round(v * den);
     return { num, den };
   });
-  const lcm = (a: number, b: number) => (!a || !b) ? a || b : Math.abs(a * b) / gcd(a, b);
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : Math.abs(a));
   const DEN = fracs.reduce((acc, f) => lcm(acc, f.den), 1) || 1;
   const coeffs = fracs.map((f) => Math.round((f.num * (DEN / f.den))));
-  // make all positive
-  const sign = coeffs.find((v) => v !== 0 && Math.sign(v)) || 1;
+  const firstNonZero = coeffs.find((v) => Math.abs(v) > 1e-12) ?? 1;
+  const sign = Math.sign(firstNonZero) || 1;
   const pos = coeffs.map((v) => Math.abs(v / sign));
-  // reduce by GCD
-  const g = pos.reduce((acc, v) => gcd(acc, Math.abs(v)), pos[0] || 1);
+  const g = pos.reduce((acc, v) => gcd(acc, Math.abs(v)), Math.abs(pos[0] || 1));
   return pos.map((v) => v / g);
 }
 
@@ -224,6 +217,23 @@ function toKelvin(t: number, unit?: string): number {
   return t; // K assumed
 }
 
+function toPascal(P?: { value: number; unit?: string } | null): number | null {
+  if (!P) return null;
+  if (!P.unit) return P.value; // assume Pa
+  if (/atm/i.test(P.unit)) return P.value * 101325;
+  if (/kpa/i.test(P.unit)) return P.value * 1000;
+  if (/\bpa\b/i.test(P.unit)) return P.value;
+  return P.value; // fallback treat as Pa
+}
+
+function toM3(V?: { value: number; unit?: string } | null): number | null {
+  if (!V) return null;
+  if (!V.unit) return V.value; // assume m^3
+  if (/\bL\b/i.test(V.unit)) return V.value * 1e-3;
+  if (/\bm\^?3\b/i.test(V.unit)) return V.value;
+  return V.value; // fallback treat as m^3
+}
+
 /* ------------------------- Main verifier ------------------------- */
 
 export function verifyChemistry(result: BoardUnderstanding): Verification | null {
@@ -231,9 +241,9 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
   const text = blob.toLowerCase();
   const finalS = String(result.final ?? "");
 
-  const looksChem = /\b(balance|stoichiometry|moles?|molarity|molar|dilution|percent\s*yield|pv\s*=\s*nr?t|ideal\s*gas|gas\s*law|limiting|excess)\b/i.test(
-    text
-  ) || /[A-Z][a-z]?\d?/.test(blob); // crude formula hint
+  const looksChem =
+    /\b(balance|stoichiometry|moles?|molarity|molar|dilution|percent\s*yield|pv\s*=\s*nr?t|ideal\s*gas|gas\s*law|limiting|excess)\b/i.test(text) ||
+    /[A-Z][a-z]?\d?/.test(blob);
   if (!looksChem) return null;
 
   const checks: Verification["checks"] = [];
@@ -244,22 +254,18 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
   if (eqFromText) {
     const coeffs = balanceEquation(eqFromText);
     if (coeffs) {
-      // If user provided a balanced line in final, compare coefficients (up to scalar)
       const eqFinal = parseEquation(finalS.replace(/⟶|⇒/g, "→"));
       if (eqFinal && (eqFinal.left.length + eqFinal.right.length) === coeffs.length) {
-        const species = [...eqFromText.left, ...eqFromText.right];
         const specFinal = [...eqFinal.left, ...eqFinal.right];
         const parseLeadingCoeff = (s: string) => {
           const m = s.match(/^(\d+)\s*/);
           return m ? parseInt(m[1], 10) : 1;
         };
         const userCoeffs = specFinal.map(parseLeadingCoeff);
-        // Compare up to a constant factor
-        const scale = userCoeffs.find((c) => c > 0) ? userCoeffs[0] / (coeffs[0] || 1) : 1;
+        const scale = (coeffs[0] || 1) !== 0 ? userCoeffs[0] / (coeffs[0] || 1) : 1;
         const same = userCoeffs.every((c, i) => approxEqual(c, coeffs[i] * scale, 1e-9));
         checks.push({ value: "balanced-equation", ok: same, reason: same ? null : "coefficients mismatch" } as any);
       } else {
-        // At least assert we can balance what’s in the text
         checks.push({ value: "balance-feasible", ok: true } as any);
       }
     }
@@ -283,7 +289,6 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
     const C2 = parseNumber(blob.match(/\bC2\s*=\s*([-\d.]+)/i)?.[1] || "") ?? null;
     const V2 = parseNumber(blob.match(/\bV2\s*=\s*([-\d.]+)/i)?.[1] || "") ?? null;
     if (finalN != null) {
-      // Try to compute whichever one is missing
       if (C1 != null && V1 != null && C2 != null && V2 == null) {
         const v2 = (C1 * V1) / C2;
         const ok = relClose(v2, finalN, 1e-6, 1e-6) || approxEqual(v2, finalN, 1e-6);
@@ -296,40 +301,37 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
     }
   }
 
-  /* ---------- 4) Ideal Gas Law (PV = nRT) ---------- */
+  /* ---------- 4) Ideal Gas Law (PV = nRT) with robust unit handling ---------- */
   if (/\b(pv\s*=\s*nr?t|ideal\s*gas|gas\s*law)\b/i.test(text)) {
-    // Parse values with units if present
-    const P = parseValWithUnit(blob, /\bP\s*=\s*([-\d.]+)\s*/i, [/atm/i, /kpa/i, /pa\b/i]);
+    const P = parseValWithUnit(blob, /\bP\s*=\s*([-\d.]+)\s*/i, [/atm/i, /kpa/i, /\bpa\b/i]);
     const V = parseValWithUnit(blob, /\bV\s*=\s*([-\d.]+)\s*/i, [/\bL\b/i, /\bm\^?3\b/i]);
     const T = parseValWithUnit(blob, /\bT\s*=\s*([-\d.]+)\s*/i, [/\bK\b/i, /\bC\b/i]);
     const n = parseValWithUnit(blob, /\bn\s*=\s*([-\d.]+)\s*/i, [/\bmol\b/i]);
 
-    // Decide R based on units (atm·L) or (Pa·m^3)
-    const useAtm = (P?.unit && /atm/i.test(P.unit)) || (V?.unit && /L/i.test(V.unit));
-    const R = useAtm ? 0.082057 : 8.314; // L·atm/(mol·K) or J/(mol·K)
-    const Pv = P?.value, Vv = V?.value, Tv = T ? toKelvin(T.value, T.unit) : undefined, nv = n?.value;
+    const Ppa = toPascal(P);
+    const Vm3 = toM3(V);
+    const Tk = T ? toKelvin(T.value, T.unit) : null;
+    const nMol = n?.value ?? null;
+    const Rsi = 8.314; // J/(mol·K) = Pa·m^3/(mol·K)
 
     if (finalN != null) {
-      // Try each unknown against final
-      if (Pv != null && Vv != null && Tv != null && nv == null) {
-        const ncalc = (Pv * (useAtm ? 1 : 1e3) * (useAtm ? 1 : Vv)) / (R * Tv); // crude: if P in kPa→Pa, V in m^3 ok
-        const nfix = useAtm ? (Pv * Vv) / (R * Tv) : (Pv * Vv) / (R * Tv);
-        const nVal = useAtm ? nfix : ncalc;
-        const ok = relClose(nVal, finalN, 1e-3, 1e-6) || approxEqual(nVal, finalN, 1e-3);
-        checks.push({ value: `n=${finalN}`, ok, lhs: nVal, rhs: finalN, reason: ok ? null : "PV=nRT mismatch for n" } as any);
+      if (Ppa != null && Vm3 != null && Tk != null && nMol == null) {
+        const ncalc = (Ppa * Vm3) / (Rsi * Tk);
+        const ok = relClose(ncalc, finalN, 1e-3, 1e-6) || approxEqual(ncalc, finalN, 1e-3);
+        checks.push({ value: `n=${finalN}`, ok, lhs: ncalc, rhs: finalN, reason: ok ? null : "PV=nRT mismatch for n" } as any);
       }
-      if (nv != null && Vv != null && Tv != null && Pv == null) {
-        const Pval = (nv * R * Tv) / Vv;
+      if (nMol != null && Vm3 != null && Tk != null && Ppa == null) {
+        const Pval = (nMol * Rsi * Tk) / Vm3;
         const ok = relClose(Pval, finalN, 1e-3, 1e-6) || approxEqual(Pval, finalN, 1e-3);
         checks.push({ value: `P=${finalN}`, ok, lhs: Pval, rhs: finalN, reason: ok ? null : "PV=nRT mismatch for P" } as any);
       }
-      if (Pv != null && nv != null && Tv != null && Vv == null) {
-        const Vval = (nv * R * Tv) / Pv;
+      if (Ppa != null && nMol != null && Tk != null && Vm3 == null) {
+        const Vval = (nMol * Rsi * Tk) / Ppa;
         const ok = relClose(Vval, finalN, 1e-3, 1e-6) || approxEqual(Vval, finalN, 1e-3);
         checks.push({ value: `V=${finalN}`, ok, lhs: Vval, rhs: finalN, reason: ok ? null : "PV=nRT mismatch for V" } as any);
       }
-      if (Pv != null && Vv != null && nv != null && Tv == null) {
-        const Tval = (Pv * Vv) / (nv * R);
+      if (Ppa != null && Vm3 != null && nMol != null && Tk == null) {
+        const Tval = (Ppa * Vm3) / (nMol * Rsi);
         const ok = relClose(Tval, finalN, 1e-3, 1e-6) || approxEqual(Tval, finalN, 1e-3);
         checks.push({ value: `T=${finalN}`, ok, lhs: Tval, rhs: finalN, reason: ok ? null : "PV=nRT mismatch for T" } as any);
       }
@@ -338,13 +340,11 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
 
   /* ---------- 5) Quick stoichiometry (mass ↔ moles for a single species) ---------- */
   if (/\bmoles?\b|grams?\b|molar\s*mass\b/i.test(text)) {
-    // Try to grab a formula appearing near "of XXX"
     const ofM = blob.match(/of\s+([A-Z][A-Za-z0-9(){}\[\]·•.]*)/);
     const formula = ofM?.[1];
     if (formula && finalN != null) {
       const mm = molarMass(formula);
       if (mm != null) {
-        // If text shows grams, compute moles; if shows moles, compute grams—compare with final
         const grams = parseNumber(blob.match(/\b([-\d.]+)\s*g\b/i)?.[1] || "");
         const moles = parseNumber(blob.match(/\b([-\d.]+)\s*mol\b/i)?.[1] || "");
         if (grams != null) {
@@ -371,9 +371,8 @@ export function verifyChemistry(result: BoardUnderstanding): Verification | null
     }
   }
 
-  // If we found nothing conclusive, bail.
   if (!checks.length) return null;
-
   const allVerified = checks.every((c: any) => c.ok);
-  return { subject: "chemistry", method: "chemistry-stoich", allVerified, checks } as Verification;
+  return { subject: "chemistry", method: "chemistry-stoich", allVerified, checks } as unknown as Verification;
 }
+
