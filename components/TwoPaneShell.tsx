@@ -29,7 +29,7 @@ export default function TwoPaneShell({
   const dragControls = useDragControls();
 
   const snapping = useRef(false);
-  const COMMIT = 0.2;   // commit threshold
+  const COMMIT = 0.12;   // commit threshold
   const RESETTOP = 0.6; // start smooth scroll-to-top at 60% toward destination
   const firedForDest = useRef<0 | 1 | null>(null);
 
