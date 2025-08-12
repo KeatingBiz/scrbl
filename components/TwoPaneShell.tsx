@@ -3,7 +3,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useAnimation, useMotionValue } from "framer-motion";
+import { motion, useAnimation, useMotionValue, useMotionValueEvent } from "framer-motion";
 
 export default function TwoPaneShell({
   active, // 0 = Scrbl, 1 = Classes
@@ -22,7 +22,7 @@ export default function TwoPaneShell({
   const controls = useAnimation();
   const snapping = useRef(false);
 
-  const THRESHOLD = 0.4; // 40% away from current pane to commit (both directions)
+  const THRESHOLD = 0.5; // commit only at/over 50% away from current pane
 
   // measure width
   useEffect(() => {
@@ -38,10 +38,7 @@ export default function TwoPaneShell({
     x.set(-active * w);
   }, [w, active, x]);
 
-  function lockVertScroll(lock: boolean) {
-    if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
-  }
-
+  // Smoothly animate to a pane
   async function animateTo(index: 0 | 1) {
     await controls.start({
       x: -index * w,
@@ -49,6 +46,7 @@ export default function TwoPaneShell({
     });
   }
 
+  // Commit navigation (after animation completes)
   async function commit(index: 0 | 1) {
     if (!w || snapping.current) return;
     snapping.current = true;
@@ -59,17 +57,38 @@ export default function TwoPaneShell({
       router.push(index === 0 ? "/" : "/gallery");
     }
 
-    // ensure destination page starts at top
-    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior }));
+    // destination starts at top (already scrolled on cross, but this is a safety)
+    requestAnimationFrame(() => window.scrollTo(0, 0));
     setTimeout(() => (snapping.current = false), 150);
   }
 
+  // Lock vertical scroll while dragging
+  function lockVertScroll(lock: boolean) {
+    if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
+  }
+
+  // Scroll to top exactly when crossing the 50% boundary (both directions)
+  const lastCrossedDest = useRef<0 | 1 | null>(null);
+  useMotionValueEvent(x, "change", (latest) => {
+    if (!w) return;
+    const progress = Math.min(1, Math.max(0, -latest / w)); // 0..1
+    const movedAway = Math.abs(progress - active);          // distance from current pane
+    const dest: 0 | 1 = progress > active ? 1 : 0;          // which side are we moving toward?
+
+    if (movedAway >= THRESHOLD) {
+      if (lastCrossedDest.current !== dest) {
+        // Crossed 50% toward dest — scroll to top once to make the finish look natural
+        window.scrollTo(0, 0);
+        lastCrossedDest.current = dest;
+      }
+    } else {
+      // reset so crossing back over 50% triggers again
+      lastCrossedDest.current = null;
+    }
+  });
+
   return (
-    <div
-      ref={wrapRef}
-      className="overflow-hidden overscroll-y-contain"
-      style={{ touchAction: "pan-y" }}
-    >
+    <div ref={wrapRef} className="overflow-hidden" style={{ touchAction: "pan-y" }}>
       <motion.div
         className="flex"
         drag="x"
@@ -80,27 +99,21 @@ export default function TwoPaneShell({
         animate={controls}
         onDragStart={() => {
           if (snapping.current) return;
-          // If we’re on Scrbl, jump to top immediately so there’s no “lag” later
-          if (active === 0) {
-            window.scrollTo(0, 0);
-          }
           lockVertScroll(true);
         }}
         onDragEnd={() => {
           lockVertScroll(false);
           if (!w) return;
 
-          // 0..1 where 0 is left pane fully in view, 1 is right pane fully in view
           const currentX = x.get();
-          const progress = Math.min(1, Math.max(0, -currentX / w));
-          // how far we moved away from current pane (symmetric)
-          const moved = Math.abs(progress - active);
+          const progress = Math.min(1, Math.max(0, -currentX / w)); // 0..1
+          const movedAway = Math.abs(progress - active);
 
-          if (moved >= THRESHOLD) {
+          if (movedAway >= THRESHOLD) {
             const target: 0 | 1 = progress > active ? 1 : 0;
             commit(target);
           } else {
-            // snap back to current
+            // snap back to current pane
             controls.start({
               x: -active * w,
               transition: { type: "spring", stiffness: 320, damping: 32 },
@@ -108,10 +121,7 @@ export default function TwoPaneShell({
           }
         }}
       >
-        {/* Scrbl pane (locked to top during drag start) */}
         <section className="min-w-full">{left}</section>
-
-        {/* Classes pane */}
         <section className="min-w-full">{right}</section>
       </motion.div>
     </div>
