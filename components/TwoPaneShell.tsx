@@ -29,17 +29,17 @@ export default function TwoPaneShell({
   const dragControls = useDragControls();
 
   const snapping = useRef(false);
-  const COMMIT = 0.12;   // commit threshold
-  const RESETTOP = 0.6;  // start smooth scroll-to-top at 60% toward destination
+  const COMMIT = 0.12;
+  const RESETTOP = 0.6;
   const firedForDest = useRef<0 | 1 | null>(null);
 
-  // Direction lock state
+  // direction lock
   const pointerIdRef = useRef<number | null>(null);
   const startX = useRef(0);
   const startY = useRef(0);
   const decided = useRef<"h" | "v" | null>(null);
 
-  // === Measure & position BEFORE paint to avoid first-paint flicker ===
+  // Measure & position BEFORE paint
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -47,7 +47,7 @@ export default function TwoPaneShell({
     const apply = () => {
       const width = el.clientWidth || 0;
       setW(width);
-      // Jump to the correct pane before paint
+      // set the motion value immediately so first painted inline transform is correct
       x.set(-active * width);
     };
 
@@ -61,9 +61,7 @@ export default function TwoPaneShell({
   useEffect(() => {
     const prev = document.body.style.overflowY;
     document.body.style.overflowY = active === 0 ? "hidden" : "auto";
-    return () => {
-      document.body.style.overflowY = prev;
-    };
+    return () => { document.body.style.overflowY = prev; };
   }, [active]);
 
   // Smooth scroll helper
@@ -71,8 +69,7 @@ export default function TwoPaneShell({
     const start = window.scrollY || document.documentElement.scrollTop || 0;
     if (start <= 0) return;
     const startTime = performance.now();
-    const ease = (t: number) =>
-      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const step = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration);
       const eased = ease(t);
@@ -92,24 +89,20 @@ export default function TwoPaneShell({
   async function commit(index: 0 | 1) {
     if (!w || snapping.current) return;
     snapping.current = true;
-
     await animateTo(index);
     if (index !== active) {
-      // Disable Next.js instant scroll so our smooth scroll (already started) isn't overridden
       router.push(index === 0 ? "/" : "/gallery", { scroll: false });
     }
     setTimeout(() => (snapping.current = false), 150);
   }
 
-  // Lock vertical scroll when actively swiping horizontally
   function setTouchAction(val: "none" | "pan-y") {
     if (wrapRef.current) wrapRef.current.style.touchAction = val;
   }
 
-  // Start smooth scroll to top at 60% toward destination
   useMotionValueEvent(x, "change", (latest) => {
     if (!w) return;
-    const progress = Math.min(1, Math.max(0, -latest / w)); // 0..1
+    const progress = Math.min(1, Math.max(0, -latest / w));
     const movedAway = Math.abs(progress - active);
     const dest: 0 | 1 = progress > active ? 1 : 0;
     if (movedAway >= RESETTOP) {
@@ -122,7 +115,6 @@ export default function TwoPaneShell({
     }
   });
 
-  // Manual direction lock: decide H vs V before starting Framer's drag
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -146,21 +138,17 @@ export default function TwoPaneShell({
 
       const dx = e.clientX - startX.current;
       const dy = e.clientY - startY.current;
-
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const MIN = 8;    // minimum motion to decide
-      const BIAS = 1.2; // horizontal vs vertical preference
+      const MIN = 8;
+      const BIAS = 1.2;
 
       if (!decided.current) {
         if (absX > MIN && absX > absY * BIAS) {
-          // Decide: horizontal swipe → start drag, lock vertical scroll
           decided.current = "h";
           setTouchAction("none");
-          // Start Framer's drag flow from this native PointerEvent
           dragControls.start(e as unknown as PointerEvent);
         } else if (absY > MIN && absY > absX * BIAS) {
-          // Decide: vertical scroll → do not start drag; keep horizontal locked
           decided.current = "v";
           setTouchAction("pan-y");
         }
@@ -186,38 +174,32 @@ export default function TwoPaneShell({
     };
   }, [dragControls]);
 
-  // SSR-first-frame shift so /gallery paints on the right pane even before JS measures
+  // SSR-first frame: use CSS shift; do NOT apply inline x until width is known
   const initialShiftClass = w === 0 && active === 1 ? "-translate-x-full" : "";
 
   return (
-    <div
-      ref={wrapRef}
-      className="overflow-hidden"
-      style={{ touchAction: "pan-y" }}
-    >
+    <div ref={wrapRef} className="overflow-hidden" style={{ touchAction: "pan-y" }}>
       <motion.div
         className={`flex will-change-transform ${initialShiftClass}`}
-        initial={false} // prevent Framer from animating from its default initial
+        initial={false}
         drag="x"
         dragControls={dragControls}
-        dragListener={false} // we start drag manually (direction lock)
+        dragListener={false}
         dragElastic={0.12}
         dragMomentum={false}
         dragConstraints={{ left: -Math.max(w, 0), right: 0 }}
-        style={{ x }}
+        // 🔑 only attach inline transform after width is known
+        style={{ x: w ? x : undefined, visibility: w ? "visible" : "hidden" }}
         animate={controls}
         onDragEnd={() => {
           if (!w) return;
-
           const currentX = x.get();
           const progress = Math.min(1, Math.max(0, -currentX / w));
           const movedAway = Math.abs(progress - active);
-
           if (movedAway >= COMMIT) {
             const target: 0 | 1 = progress > active ? 1 : 0;
             commit(target);
           } else {
-            // snap back to current pane
             controls.start({
               x: -active * w,
               transition: { type: "spring", stiffness: 320, damping: 32 },
@@ -225,7 +207,7 @@ export default function TwoPaneShell({
           }
         }}
       >
-        {/* Strong isolation to prevent overlay bleed/flicker between panes */}
+        {/* Panes */}
         <motion.section
           className="min-w-full relative overflow-hidden"
           style={{
@@ -255,6 +237,7 @@ export default function TwoPaneShell({
     </div>
   );
 }
+
 
 
 
