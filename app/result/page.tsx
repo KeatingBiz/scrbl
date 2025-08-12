@@ -20,7 +20,7 @@ function StepCard({ s }: { s: Step }) {
   return (
     <div className="rounded-xl border border-white/10 bg-black/30 p-3 notebook">
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-full bg-scrbl/20 text-scrbl grid place-items-center font-bold">{s.n}</div>
+        <div className="w-7 h-7 rounded-full bg-scrbl/20 text-white grid place-items-center font-bold">{s.n}</div>
         <div className="text-sm font-semibold">{s.action || s.text}</div>
         <div className="ml-auto text-lg">{s.emoji ?? "✏️"}</div>
       </div>
@@ -70,7 +70,7 @@ export default function ResultPage() {
     setResult(JSON.parse(res) as BoardUnderstanding);
   }, [router]);
 
-  // Auto-add announcements to in-app calendar (visual flow only)
+  // Keep saving announcements locally (no UI change needed)
   useEffect(() => {
     if (!result || result.type !== "ANNOUNCEMENT") return;
     const evs = (result.events ?? []).filter(Boolean);
@@ -136,9 +136,9 @@ export default function ResultPage() {
         </div>
 
         {result?.type === "ANNOUNCEMENT" && addedCount > 0 && (
-          <div className="mt-3 text-xs text-scrbl">
-            ✅ Added {addedCount} event{addedCount > 1 ? "s" : ""} to your in-app calendar.{" "}
-            <a href="/calendar" className="underline hover:no-underline">Open calendar</a>
+          <div className="mt-3 text-xs text-white">
+            ✅ Saved {addedCount} event{addedCount > 1 ? "s" : ""}.{" "}
+            <a href="/gallery" className="underline hover:no-underline">View in Classes</a>
           </div>
         )}
       </div>
@@ -182,15 +182,15 @@ export default function ResultPage() {
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={() => addToCalendar(ev)}
-                  className="flex-1 rounded-xl py-2 bg-scrbl/20 text-scrbl font-semibold hover:bg-scrbl/30 transition"
+                  className="btn-scrbl flex-1 rounded-xl py-2 font-semibold transition"
                 >
                   Add to native (.ics)
                 </button>
                 <a
-                  href="/calendar"
+                  href="/gallery"
                   className="flex-1 text-center rounded-xl py-2 bg-white/5 text-white hover:bg-white/10 transition"
                 >
-                  View in-app
+                  View in Classes
                 </a>
               </div>
             </div>
@@ -209,12 +209,13 @@ export default function ResultPage() {
           onClick={() => location.assign("/")}
           className="w-full rounded-xl py-3 mt-2 bg-white/5 text-white hover:bg-white/10 transition"
         >
-          New Capture
+          New Scrbl
         </button>
       </div>
     </div>
   );
 }
+
 
 
 
