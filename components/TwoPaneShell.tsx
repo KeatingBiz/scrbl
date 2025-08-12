@@ -7,6 +7,7 @@ import {
   motion,
   useAnimation,
   useMotionValue,
+  useMotionValueEvent,
   useDragControls,
 } from "framer-motion";
 
@@ -28,7 +29,9 @@ export default function TwoPaneShell({
   const dragControls = useDragControls();
 
   const snapping = useRef(false);
-  const COMMIT = 0.12; // commit threshold
+  const COMMIT = 0.12;   // commit threshold
+  const RESETTOP = 0.6;  // start smooth scroll-to-top at 60% toward destination
+  const firedForDest = useRef<0 | 1 | null>(null);
 
   // Direction lock state
   const pointerIdRef = useRef<number | null>(null);
@@ -36,19 +39,23 @@ export default function TwoPaneShell({
   const startY = useRef(0);
   const decided = useRef<"h" | "v" | null>(null);
 
-  // measure width
-  useEffect(() => {
-    const measure = () => setW(wrapRef.current?.clientWidth || 0);
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-
-  // jump to active pane on mount/resize
+  // === Measure & position BEFORE paint to avoid first-paint flicker ===
   useLayoutEffect(() => {
-    if (!w) return;
-    x.set(-active * w);
-  }, [w, active, x]);
+    const el = wrapRef.current;
+    if (!el) return;
+
+    const apply = () => {
+      const width = el.clientWidth || 0;
+      setW(width);
+      // Jump to the correct pane before paint
+      x.set(-active * width);
+    };
+
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [active, x]);
 
   // Scrbl (left) cannot scroll vertically; Classes can
   useEffect(() => {
@@ -59,10 +66,9 @@ export default function TwoPaneShell({
     };
   }, [active]);
 
-  // Smooth scroll helper — only called on commit now
-  function smoothScrollToTop(duration = 500) {
-    const start =
-      window.scrollY || document.documentElement.scrollTop || 0;
+  // Smooth scroll helper
+  function smoothScrollToTop(duration = 600) {
+    const start = window.scrollY || document.documentElement.scrollTop || 0;
     if (start <= 0) return;
     const startTime = performance.now();
     const ease = (t: number) =>
@@ -87,22 +93,34 @@ export default function TwoPaneShell({
     if (!w || snapping.current) return;
     snapping.current = true;
 
-    // Ensure the document is at top to avoid any repaint jank during/after navigation.
-    if (index !== active) smoothScrollToTop(450);
-
     await animateTo(index);
-
     if (index !== active) {
-      // Prevent Next.js from auto-scrolling; we already handled it.
+      // Disable Next.js instant scroll so our smooth scroll (already started) isn't overridden
       router.push(index === 0 ? "/" : "/gallery", { scroll: false });
     }
-    setTimeout(() => (snapping.current = false), 120);
+    setTimeout(() => (snapping.current = false), 150);
   }
 
   // Lock vertical scroll when actively swiping horizontally
   function setTouchAction(val: "none" | "pan-y") {
     if (wrapRef.current) wrapRef.current.style.touchAction = val;
   }
+
+  // Start smooth scroll to top at 60% toward destination
+  useMotionValueEvent(x, "change", (latest) => {
+    if (!w) return;
+    const progress = Math.min(1, Math.max(0, -latest / w)); // 0..1
+    const movedAway = Math.abs(progress - active);
+    const dest: 0 | 1 = progress > active ? 1 : 0;
+    if (movedAway >= RESETTOP) {
+      if (firedForDest.current !== dest) {
+        smoothScrollToTop(600);
+        firedForDest.current = dest;
+      }
+    } else {
+      firedForDest.current = null;
+    }
+  });
 
   // Manual direction lock: decide H vs V before starting Framer's drag
   useEffect(() => {
@@ -115,6 +133,7 @@ export default function TwoPaneShell({
       startX.current = e.clientX;
       startY.current = e.clientY;
       decided.current = null;
+      firedForDest.current = null;
 
       window.addEventListener("pointermove", onPointerMove, { passive: true });
       window.addEventListener("pointerup", onPointerUp, { passive: true });
@@ -130,7 +149,7 @@ export default function TwoPaneShell({
 
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const MIN = 8; // minimum motion to decide
+      const MIN = 8;    // minimum motion to decide
       const BIAS = 1.2; // horizontal vs vertical preference
 
       if (!decided.current) {
@@ -167,6 +186,9 @@ export default function TwoPaneShell({
     };
   }, [dragControls]);
 
+  // SSR-first-frame shift so /gallery paints on the right pane even before JS measures
+  const initialShiftClass = w === 0 && active === 1 ? "-translate-x-full" : "";
+
   return (
     <div
       ref={wrapRef}
@@ -174,15 +196,15 @@ export default function TwoPaneShell({
       style={{ touchAction: "pan-y" }}
     >
       <motion.div
-        className="flex transform-gpu will-change-transform"
-        initial={false}
+        className={`flex will-change-transform ${initialShiftClass}`}
+        initial={false} // prevent Framer from animating from its default initial
         drag="x"
         dragControls={dragControls}
         dragListener={false} // we start drag manually (direction lock)
         dragElastic={0.12}
         dragMomentum={false}
         dragConstraints={{ left: -Math.max(w, 0), right: 0 }}
-        style={{ x, transform: "translateZ(0)" }}
+        style={{ x }}
         animate={controls}
         onDragEnd={() => {
           if (!w) return;
@@ -205,30 +227,26 @@ export default function TwoPaneShell({
       >
         {/* Strong isolation to prevent overlay bleed/flicker between panes */}
         <motion.section
-          className="min-w-full relative overflow-hidden transform-gpu"
-          initial={false}
+          className="min-w-full relative overflow-hidden"
           style={{
             contain: "layout paint",
+            clipPath: "inset(0)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden" as any,
             transform: "translateZ(0)",
-            willChange: "transform",
-            isolation: "isolate",
           }}
         >
           {left}
         </motion.section>
 
         <motion.section
-          className="min-w-full relative overflow-hidden transform-gpu"
-          initial={false}
+          className="min-w-full relative overflow-hidden"
           style={{
             contain: "layout paint",
+            clipPath: "inset(0)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden" as any,
             transform: "translateZ(0)",
-            willChange: "transform",
-            isolation: "isolate",
           }}
         >
           {right}
