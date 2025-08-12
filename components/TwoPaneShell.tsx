@@ -3,7 +3,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useAnimation, useMotionValue } from "framer-motion";
+import { motion, useAnimation, useMotionValue, useMotionValueEvent } from "framer-motion";
 
 export default function TwoPaneShell({
   active, // 0 = Scrbl, 1 = Classes
@@ -18,16 +18,15 @@ export default function TwoPaneShell({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
 
-  // horizontal position
   const x = useMotionValue(0);
   const controls = useAnimation();
   const snapping = useRef(false);
 
-  // subtle "settle" animation on the entering pane
-  const leftSettle = useAnimation();
-  const rightSettle = useAnimation();
+  const COMMIT = 0.4;     // commit threshold (both directions)
+  const RESETTOP = 0.6;   // when crossing this toward the destination, reset scroll-to-top
 
-  const THRESHOLD = 0.4; // commit at 40%
+  // track if we've already fired the 60% reset for this drag toward a given dest
+  const firedForDest = useRef<0 | 1 | null>(null);
 
   // measure width
   useEffect(() => {
@@ -37,33 +36,18 @@ export default function TwoPaneShell({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  // set position instantly to the active pane on mount/resize
+  // position to the active pane instantly on mount/resize
   useLayoutEffect(() => {
     if (!w) return;
     x.set(-active * w);
   }, [w, active, x]);
 
-  // lock/unlock body vertical scroll: Scrbl locked; Classes scrollable
+  // Lock body vertical scroll on Scrbl; allow on Classes
   useEffect(() => {
     const prev = document.body.style.overflowY;
     document.body.style.overflowY = active === 0 ? "hidden" : "auto";
-    return () => {
-      document.body.style.overflowY = prev;
-    };
+    return () => { document.body.style.overflowY = prev; };
   }, [active]);
-
-  // when this shell mounts (or active changes due to route), play a tiny settle on the active pane
-  useEffect(() => {
-    const ctrl = active === 0 ? leftSettle : rightSettle;
-    // start from slightly above and ease down to 0
-    ctrl.start({
-      y: [-10, 0],
-      opacity: [0.98, 1],
-      transition: { duration: 0.28, ease: "easeOut" },
-    });
-    // reset the inactive pane so it’s neutral next time
-    (active === 0 ? rightSettle : leftSettle).set({ y: 0, opacity: 1 });
-  }, [active, leftSettle, rightSettle]);
 
   async function animateTo(index: 0 | 1) {
     await controls.start({
@@ -76,11 +60,10 @@ export default function TwoPaneShell({
     if (!w || snapping.current) return;
     snapping.current = true;
 
-    // finish the horizontal slide first
     await animateTo(index);
 
-    // then sync URL (Next.js will restore scroll to top by default)
     if (index !== active) {
+      // Next.js will scroll the document to top on route change (desired).
       router.push(index === 0 ? "/" : "/gallery");
     }
 
@@ -90,6 +73,25 @@ export default function TwoPaneShell({
   function lockVertScroll(lock: boolean) {
     if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
   }
+
+  // Fire the "reset to top" exactly when you pass 60% toward the destination pane.
+  useMotionValueEvent(x, "change", (latest) => {
+    if (!w) return;
+    const progress = Math.min(1, Math.max(0, -latest / w));  // 0 (left) .. 1 (right)
+    const movedAway = Math.abs(progress - active);           // distance from current pane
+    const dest: 0 | 1 = progress > active ? 1 : 0;           // which side we're heading to
+
+    if (movedAway >= RESETTOP) {
+      if (firedForDest.current !== dest) {
+        // reset document scroll while the slide is still moving toward the new page
+        window.scrollTo(0, 0);
+        firedForDest.current = dest;
+      }
+    } else {
+      // drop back under the threshold → re-arm
+      firedForDest.current = null;
+    }
+  });
 
   return (
     <div ref={wrapRef} className="overflow-hidden" style={{ touchAction: "pan-y" }}>
@@ -103,6 +105,7 @@ export default function TwoPaneShell({
         animate={controls}
         onDragStart={() => {
           if (snapping.current) return;
+          firedForDest.current = null; // fresh drag
           lockVertScroll(true);
         }}
         onDragEnd={() => {
@@ -110,10 +113,10 @@ export default function TwoPaneShell({
           if (!w) return;
 
           const currentX = x.get();
-          const progress = Math.min(1, Math.max(0, -currentX / w)); // 0..1
+          const progress = Math.min(1, Math.max(0, -currentX / w));
           const movedAway = Math.abs(progress - active);
 
-          if (movedAway >= THRESHOLD) {
+          if (movedAway >= COMMIT) {
             const target: 0 | 1 = progress > active ? 1 : 0;
             commit(target);
           } else {
@@ -125,19 +128,16 @@ export default function TwoPaneShell({
           }
         }}
       >
-        {/* Each pane is its own stacked, clipped island so overlays don’t bleed */}
+        {/* Each pane is fully clipped & isolated to avoid overlay bleed/flicker */}
         <motion.section
-          className="min-w-full relative isolate overflow-hidden"
-          animate={leftSettle}
-          initial={false}
+          className="min-w-full relative overflow-hidden"
+          style={{ contain: "layout paint", clipPath: "inset(0)", transform: "translateZ(0)" }}
         >
           {left}
         </motion.section>
-
         <motion.section
-          className="min-w-full relative isolate overflow-hidden"
-          animate={rightSettle}
-          initial={false}
+          className="min-w-full relative overflow-hidden"
+          style={{ contain: "layout paint", clipPath: "inset(0)", transform: "translateZ(0)" }}
         >
           {right}
         </motion.section>
@@ -145,9 +145,4 @@ export default function TwoPaneShell({
     </div>
   );
 }
-
-
-
-
-
 
