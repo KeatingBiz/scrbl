@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { getFolders, addFolder, getItemsForFolder, getItems, type Folder, type SavedItem } from "@/lib/storage";
 
 function chipClasses(active = false) {
@@ -30,8 +29,7 @@ export default function ClassesPage() {
     }
     const f = addFolder(name);
     const next = [...folders, f];
-    setFolders(next);
-    setActive(f.id);
+    setFolders(next); setActive(f.id);
   }
 
   const isRecents = active === "recents";
@@ -39,50 +37,34 @@ export default function ClassesPage() {
     return isRecents ? getItems() : getItemsForFolder(active);
   }, [active, isRecents]);
 
-  const title = isRecents
-    ? "Recents"
-    : (folders.find(x => x.id === active)?.name || "Class");
-
+  const title = isRecents ? "Recents" : (folders.find(x => x.id === active)?.name || "Class");
   const itemCount = items.length;
 
   function openItem(it: SavedItem) {
-    // hydrate /result page
-    sessionStorage.setItem("scrbl:lastImage", it.imageDataUrl);
+    sessionStorage.setItem("scrbl:lastImage", it.thumbDataUrl);              // small but fine for preview
     sessionStorage.setItem("scrbl:lastResult", JSON.stringify(it.result));
     location.assign("/result");
   }
 
   return (
     <div className="min-h-screen p-6 flex flex-col items-center gap-6">
-      {/* Page header */}
-      <div className="w-full max-w-md">
+      <div className="w/full max-w-md">
         <div className="text-neutral-200 text-sm">Your</div>
         <h1 className="text-2xl font-bold">Classes</h1>
       </div>
 
-      {/* Chips grid (even spacing) */}
       <div className="w-full max-w-md">
         <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
-          <button className={chipClasses(isRecents)} onClick={() => setActive("recents")} title="Recents">
-            Recents
-          </button>
+          <button className={chipClasses(isRecents)} onClick={() => setActive("recents")} title="Recents">Recents</button>
           {folders.map(f => (
-            <button
-              key={f.id}
-              className={chipClasses(active === f.id)}
-              onClick={() => setActive(f.id)}
-              title={f.name}
-            >
+            <button key={f.id} className={chipClasses(active === f.id)} onClick={() => setActive(f.id)} title={f.name}>
               {f.name}
             </button>
           ))}
-          <button className={chipClasses(false)} onClick={addClassFolder} title="Add Class">
-            + Add Class
-          </button>
+          <button className={chipClasses(false)} onClick={addClassFolder} title="Add Class">+ Add Class</button>
         </div>
       </div>
 
-      {/* Items */}
       <section className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-2">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -98,17 +80,9 @@ export default function ClassesPage() {
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {items.map(it => (
-              <button
-                key={it.id}
-                onClick={() => openItem(it)}
-                className="group block text-left"
-              >
+              <button key={it.id} onClick={() => openItem(it)} className="group block text-left">
                 <div className="aspect-square overflow-hidden rounded-lg border border-white/10 bg-black/30">
-                  <img
-                    src={it.imageDataUrl}
-                    alt=""
-                    className="w-full h-full object-cover group-hover:scale-[1.02] transition"
-                  />
+                  <img src={it.thumbDataUrl} alt="" className="w-full h-full object-cover group-hover:scale-[1.02] transition" />
                 </div>
                 <div className="mt-1 text-[10px] text-neutral-400 truncate">
                   {new Date(it.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -121,3 +95,4 @@ export default function ClassesPage() {
     </div>
   );
 }
+
