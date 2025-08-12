@@ -5,6 +5,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body {
+  scrollbar-gutter: stable both-edges;
+}
+
 /* ===== SCRBL theme ===== */
 :root {
   /* exact green from your logo */
