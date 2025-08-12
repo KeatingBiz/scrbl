@@ -65,7 +65,7 @@ function detectVariables(lhs: string, rhs: string): string[] {
   const letters = Array.from(all).filter((v) => /^[a-zA-Z]$/.test(v));
   const others = Array.from(all).filter((v) => !/^[a-zA-Z]$/.test(v));
   const ordered = [...letters, ...others].map((v) => v.toLowerCase());
-  // Prefer x then y if present
+  // Prefer x then y then z
   ordered.sort((a, b) => {
     const p = ["x", "y", "z"];
     const ia = p.indexOf(a);
@@ -130,14 +130,13 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     (foundPairs[v] ??= []).push(...parts);
   }
 
-  // If we captured explicit pairs that cover all vars, create combinations
+  // If we captured explicit pairs that cover some/all vars, create combinations
   const keys = Object.keys(foundPairs);
   if (keys.length > 0) {
-    // If only a subset present (e.g., x=..., but y is not mentioned), we still yield partial and let eval fail if needed
     function* product(
-  i: number,
-  acc: Record<string, number>
-): Generator<Record<string, number>, void, unknown> {
+      i: number,
+      acc: Record<string, number>
+    ): Generator<Record<string, number>, void, unknown> {
       if (i >= keys.length) {
         yield acc;
         return;
@@ -152,7 +151,7 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     for (const a of product(0, {})) out.push(a);
   }
 
-  // Fallback: single-variable extraction "x=..." formats when only one var exists
+  // Fallback: single-variable extraction when only one var exists
   if (out.length === 0 && vars.length === 1) {
     const v = vars[0];
     let rhs = final.includes("=") ? final.slice(final.indexOf("=") + 1) : final;
@@ -273,6 +272,7 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
     checks,
   } as Verification;
 }
+
 
 
 
