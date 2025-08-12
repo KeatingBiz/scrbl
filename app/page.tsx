@@ -57,7 +57,7 @@ export default function Home() {
         {/* Hero logo */}
         <Logo size="lg" href={null} />
 
-        {/* Bigger tagline with brand arrow */}
+        {/* Big tagline */}
         <div className="max-w-sm">
           <div className="flex items-center justify-center gap-2 text-white font-extrabold text-xl sm:text-2xl leading-tight tracking-tight">
             <span>Snap the lecture whiteboard</span>
@@ -143,7 +143,7 @@ export default function Home() {
         onChange={onPick}
       />
 
-      {/* Action sheet */}
+      {/* Action sheet (no heading, outline buttons) */}
       {chooserOpen && !busy && (
         <div
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
@@ -152,17 +152,24 @@ export default function Home() {
           }}
         >
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-black/85 p-4">
-            <div className="text-sm font-semibold mb-3">Choose source</div>
             <div className="flex flex-col gap-2">
               <button
                 className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => cameraRef.current?.click()}
+                onClick={() => {
+                  setChooserOpen(false);
+                  // Allow backdrop to close before opening camera
+                  setTimeout(() => cameraRef.current?.click(), 0);
+                }}
               >
                 Take Photo
               </button>
               <button
                 className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => libraryRef.current?.click()}
+                onClick={() => {
+                  setChooserOpen(false);
+                  // Open library immediately (note: iOS may still show its native sheet)
+                  setTimeout(() => libraryRef.current?.click(), 0);
+                }}
               >
                 Choose from Library
               </button>
@@ -179,6 +186,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
