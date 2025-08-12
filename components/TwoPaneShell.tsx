@@ -20,8 +20,7 @@ export default function TwoPaneShell({
 
   const x = useMotionValue(0);
   const controls = useAnimation();
-  const dragStartX = useRef(0);
-  const navigating = useRef(false);
+  const snapping = useRef(false);
 
   // measure width
   useEffect(() => {
@@ -37,29 +36,35 @@ export default function TwoPaneShell({
     x.set(-active * w);
   }, [w, active, x]);
 
-  // helper to animate then sync URL + scroll top
-  async function commit(index: 0 | 1) {
-    if (!w || navigating.current) return;
-    navigating.current = true;
+  function lockVertScroll(lock: boolean) {
+    if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
+  }
 
-    // animate to target pane
+  async function animateTo(index: 0 | 1) {
     await controls.start({
       x: -index * w,
       transition: { type: "spring", stiffness: 320, damping: 32 },
     });
-
-    // sync URL after the animation finishes
-    router.push(index === 0 ? "/" : "/gallery");
-
-    // ensure the new page starts at top
-    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior }));
-    // small delay before allowing another nav
-    setTimeout(() => (navigating.current = false), 200);
   }
 
-  // while swiping, disable vertical scroll for smoother horizontal drag
-  function setTouchAction(val: "none" | "pan-y") {
-    if (wrapRef.current) wrapRef.current.style.touchAction = val;
+  async function commit(index: 0 | 1) {
+    if (!w || snapping.current) return;
+    snapping.current = true;
+    await animateTo(index);
+
+    // Only push if we’re changing pages
+    if (index !== active) {
+      router.push(index === 0 ? "/" : "/gallery");
+    }
+
+    // Ensure destination page starts at the top
+    requestAnimationFrame(() =>
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior })
+    );
+
+    setTimeout(() => {
+      snapping.current = false;
+    }, 150);
   }
 
   return (
@@ -72,31 +77,28 @@ export default function TwoPaneShell({
         dragConstraints={{ left: -Math.max(w, 0), right: 0 }}
         style={{ x }}
         animate={controls}
-        onDragStart={(_, info) => {
-          dragStartX.current = x.get();
-          setTouchAction("none"); // lock vertical while we decide
+        onDragStart={() => {
+          if (snapping.current) return;
+          lockVertScroll(true);
         }}
-        onDragEnd={(_, info) => {
-          setTouchAction("pan-y"); // restore vertical scroll
+        onDragEnd={() => {
+          lockVertScroll(false);
           if (!w) return;
+          // Read the actual position at release
+          const currentX = x.get();
+          const progress = Math.min(1, Math.max(0, -currentX / w)); // 0..1
 
-          // where we ended relative to drag start
-          const endX = dragStartX.current + info.offset.x;
-          const progress = -endX / w; // 0..1 between panes
-          const vx = info.velocity.x;
+          // Strict 50% rule: > 0.5 goes to right pane, else left.
+          const target: 0 | 1 = progress > 0.5 ? 1 : 0;
 
-          // commit rules: >50% progress to right pane OR fast fling
-          if (progress > 0.5 || vx < -300) {
-            commit(1);
-          } else if (progress < 0.5 && vx > 300) {
-            commit(0);
-          } else {
-            // snap back to the nearest pane without URL change
-            const nearest = progress >= 0.5 ? 1 : 0;
+          // If target is the same as current route, just snap back; else commit (animate + push)
+          if (target === active) {
             controls.start({
-              x: -nearest * w,
+              x: -active * w,
               transition: { type: "spring", stiffness: 320, damping: 32 },
             });
+          } else {
+            commit(target);
           }
         }}
       >
@@ -106,4 +108,5 @@ export default function TwoPaneShell({
     </div>
   );
 }
+
 
