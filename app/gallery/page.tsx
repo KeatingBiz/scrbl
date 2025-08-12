@@ -15,9 +15,7 @@ function loadFolders(): Folder[] {
     const raw = localStorage.getItem(FOLDERS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Folder[]) : [];
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 function saveFolders(folders: Folder[]) {
   if (typeof window === "undefined") return;
@@ -26,13 +24,14 @@ function saveFolders(folders: Folder[]) {
 
 function chipClasses(active = false) {
   return [
-    // chip base
-    "inline-flex items-center px-3 py-1.5 rounded-full text-sm border transition",
-    // white label + green outline look
+    // equal-size chip inside grid cell
+    "inline-flex w-full h-9 items-center justify-center",
+    // visuals
+    "px-3 rounded-full text-sm border transition",
     "text-white",
     active ? "border-scrbl bg-white/5" : "border-scrbl/50 hover:bg-white/5",
-    // layout controls
-    "max-w-[12rem] truncate"
+    // text handling
+    "truncate"
   ].join(" ");
 }
 
@@ -40,23 +39,16 @@ export default function ClassesPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [active, setActive] = useState<string>(RECENTS_ID);
 
-  useEffect(() => {
-    setFolders(loadFolders());
-  }, []);
+  useEffect(() => { setFolders(loadFolders()); }, []);
 
   function addClassFolder() {
     const name = (prompt("Class name (e.g., Finance 331)") || "").trim();
     if (!name) return;
     const exists = folders.some((f) => f.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      alert("You already have a folder with that name.");
-      return;
-    }
+    if (exists) { alert("You already have a folder with that name."); return; }
     const id = crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     const next = [...folders, { id, name }];
-    setFolders(next);
-    saveFolders(next);
-    setActive(id);
+    setFolders(next); saveFolders(next); setActive(id);
   }
 
   // Recents shows the last captured image (visual only for now)
@@ -81,12 +73,13 @@ export default function ClassesPage() {
         <h1 className="text-2xl font-bold">Classes</h1>
       </div>
 
-      {/* Folder chips — now wrapping instead of horizontal scroll */}
+      {/* Folder chips — equal-width grid that fills each row */}
       <div className="w-full max-w-md">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
           <button
             className={chipClasses(active === RECENTS_ID)}
             onClick={() => setActive(RECENTS_ID)}
+            title="Recents"
           >
             Recents
           </button>
@@ -102,7 +95,7 @@ export default function ClassesPage() {
             </button>
           ))}
 
-          <button className={chipClasses(false)} onClick={addClassFolder}>
+          <button className={chipClasses(false)} onClick={addClassFolder} title="Add Class">
             + Add Class
           </button>
         </div>
@@ -145,6 +138,7 @@ export default function ClassesPage() {
     </div>
   );
 }
+
 
 
 
