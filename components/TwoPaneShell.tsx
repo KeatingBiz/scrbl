@@ -3,7 +3,12 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useAnimation, useMotionValue, useMotionValueEvent } from "framer-motion";
+import {
+  motion,
+  useAnimation,
+  useMotionValue,
+  useMotionValueEvent,
+} from "framer-motion";
 
 export default function TwoPaneShell({
   active, // 0 = Scrbl, 1 = Classes
@@ -18,14 +23,15 @@ export default function TwoPaneShell({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(0);
 
+  // horizontal position
   const x = useMotionValue(0);
   const controls = useAnimation();
   const snapping = useRef(false);
 
-  const COMMIT = 0.4;     // commit threshold (both directions)
-  const RESETTOP = 0.6;   // when crossing this toward the destination, reset scroll-to-top
+  const COMMIT = 0.4;   // commit threshold (both directions)
+  const RESETTOP = 0.6; // start smooth scroll-to-top when you pass 60% toward destination
 
-  // track if we've already fired the 60% reset for this drag toward a given dest
+  // track if we've fired the 60% smooth-scroll for the current drag (per destination)
   const firedForDest = useRef<0 | 1 | null>(null);
 
   // measure width
@@ -46,8 +52,32 @@ export default function TwoPaneShell({
   useEffect(() => {
     const prev = document.body.style.overflowY;
     document.body.style.overflowY = active === 0 ? "hidden" : "auto";
-    return () => { document.body.style.overflowY = prev; };
+    return () => {
+      document.body.style.overflowY = prev;
+    };
   }, [active]);
+
+  // Smooth scroll helper (customizable duration/ease)
+  function smoothScrollToTop(duration = 600) {
+    const start =
+      window.scrollY || document.documentElement.scrollTop || 0;
+    if (start <= 0) return;
+    const startTime = performance.now();
+
+    function easeInOutCubic(t: number) {
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function step(now: number) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = easeInOutCubic(t);
+      window.scrollTo(0, Math.round(start * (1 - eased)));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
 
   async function animateTo(index: 0 | 1) {
     await controls.start({
@@ -60,36 +90,36 @@ export default function TwoPaneShell({
     if (!w || snapping.current) return;
     snapping.current = true;
 
+    // finish the horizontal slide
     await animateTo(index);
 
+    // sync URL WITHOUT Next's auto scroll
     if (index !== active) {
-      // Next.js will scroll the document to top on route change (desired).
-      router.push(index === 0 ? "/" : "/gallery");
+      router.push(index === 0 ? "/" : "/gallery", { scroll: false });
     }
 
     setTimeout(() => (snapping.current = false), 150);
   }
 
   function lockVertScroll(lock: boolean) {
-    if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
+    if (wrapRef.current)
+      wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
   }
 
-  // Fire the "reset to top" exactly when you pass 60% toward the destination pane.
+  // Fire the smooth scroll exactly when you pass 60% toward the destination pane.
   useMotionValueEvent(x, "change", (latest) => {
     if (!w) return;
-    const progress = Math.min(1, Math.max(0, -latest / w));  // 0 (left) .. 1 (right)
-    const movedAway = Math.abs(progress - active);           // distance from current pane
-    const dest: 0 | 1 = progress > active ? 1 : 0;           // which side we're heading to
+    const progress = Math.min(1, Math.max(0, -latest / w)); // 0 (left) .. 1 (right)
+    const movedAway = Math.abs(progress - active);          // distance from current pane
+    const dest: 0 | 1 = progress > active ? 1 : 0;          // which side we're heading to
 
     if (movedAway >= RESETTOP) {
       if (firedForDest.current !== dest) {
-        // reset document scroll while the slide is still moving toward the new page
-        window.scrollTo(0, 0);
+        smoothScrollToTop(600); // tune duration if you want
         firedForDest.current = dest;
       }
     } else {
-      // drop back under the threshold → re-arm
-      firedForDest.current = null;
+      firedForDest.current = null; // re-arm when under 60%
     }
   });
 
@@ -105,7 +135,7 @@ export default function TwoPaneShell({
         animate={controls}
         onDragStart={() => {
           if (snapping.current) return;
-          firedForDest.current = null; // fresh drag
+          firedForDest.current = null; // new drag
           lockVertScroll(true);
         }}
         onDragEnd={() => {
@@ -128,7 +158,7 @@ export default function TwoPaneShell({
           }
         }}
       >
-        {/* Each pane is fully clipped & isolated to avoid overlay bleed/flicker */}
+        {/* Each pane is clipped/isolated so overlays can't bleed across */}
         <motion.section
           className="min-w-full relative overflow-hidden"
           style={{ contain: "layout paint", clipPath: "inset(0)", transform: "translateZ(0)" }}
@@ -145,4 +175,5 @@ export default function TwoPaneShell({
     </div>
   );
 }
+
 
