@@ -73,8 +73,8 @@ function numericSecondDerivative(expr: string, x0: number): number | null {
 /* ------------------------- parsers ------------------------- */
 
 type DerivProblem =
-  | { kind: "expr-derivative"; fExpr: string; derivExpr?: string } // final is expression
-  | { kind: "value-derivative"; fExpr: string; at: number };       // derivative at a point
+  | { kind: "expr-derivative"; fExpr: string; derivExpr?: string }
+  | { kind: "value-derivative"; fExpr: string; at: number };
 
 function parseDerivativeProblem(text: string, finalS: string): DerivProblem | null {
   const t = norm(text);
@@ -88,7 +88,7 @@ function parseDerivativeProblem(text: string, finalS: string): DerivProblem | nu
     finalS.match(/\bat\s*x\s*=\s*(-?\d*\.?\d+(?:e[+-]?\d+)?)/i);
   const at = atM ? parseFloat(atM[1]) : null;
 
-  const finalLooksNumeric = parseNumber(finalS) != null && !/[a-df-z]/i.test(finalS.replace(/[eE][+-]?\d+/, "")); // ignore e in sci notation
+  const finalLooksNumeric = parseNumber(finalS) != null && !/[a-df-z]/i.test(finalS.replace(/[eE][+-]?\d+/, ""));
   if (finalLooksNumeric && at != null) {
     return { kind: "value-derivative", fExpr, at };
   }
@@ -177,7 +177,6 @@ function parseLimit(text: string): LimitProblem {
 function parseCandidateXs(finalS: string): number[] {
   const s = norm(finalS);
   const hits: number[] = [];
-  // grab the part after "x = ..."
   const m = s.match(/x\s*=\s*([^\n;]+)/i);
   const seg = m ? m[1] : s;
   seg
@@ -188,7 +187,6 @@ function parseCandidateXs(finalS: string): number[] {
       const n = parseNumber(t);
       if (n != null) hits.push(n);
     });
-  // dedupe
   return Array.from(new Set(hits.filter((n) => Number.isFinite(n))));
 }
 
@@ -197,10 +195,8 @@ function parseAntiderivativeExprFromFinal(finalS: string): string | null {
   let e = norm(finalS);
   e = e.replace(/f\s*\(\s*x\s*\)\s*=\s*/i, "").replace(/y\s*=\s*/i, "");
   e = e.replace(/\+\s*c\b/gi, "").replace(/constant\s*of\s*integration/gi, "");
-  // If there is an equals and a RHS, take RHS
   if (e.includes("=")) e = e.slice(e.indexOf("=") + 1).trim();
-  // must reference x or a function to be meaningful
-  if (!/[a-df-z]/i.test(e)) return null; // ignore numeric only (allow e in sci note)
+  if (!/[a-df-z]/i.test(e)) return null; // allow scientific "e"
   return e;
 }
 
@@ -239,7 +235,6 @@ export function verifyCalculus(result: BoardUnderstanding): Verification | null 
   if (indef) {
     const Fexpr = parseAntiderivativeExprFromFinal(finalS);
     if (Fexpr) {
-      // Differentiate reported F and compare to integrand at samples
       const samples = [-2, -1, -0.5, 0.5, 1, 2];
       let agree = 0, total = 0;
       for (const x of samples) {
@@ -328,9 +323,8 @@ export function verifyCalculus(result: BoardUnderstanding): Verification | null 
     }
   }
 
-  /* --- 6) Critical points (x* where f'(x*)≈0), optional classification --- */
+  /* --- 6) Critical points & classification --- */
   if (/\b(critical|maximum|minimum|max|min|optimi[sz]e)\b/i.test(text)) {
-    // Try to recover f(x)
     const fx = norm(blob).match(/\bf\s*\(\s*x\s*\)\s*=\s*([^;\n]+)/i)?.[1]?.trim() ??
                norm(blob).match(/y\s*=\s*([^;\n]+)/i)?.[1]?.trim() ??
                null;
@@ -348,7 +342,6 @@ export function verifyCalculus(result: BoardUnderstanding): Verification | null 
           reason: okStationary ? null : "f'(x*) not ~ 0",
         };
 
-        // If the text mentions max/min, attempt classification
         if (/\bmaximum|max\b/i.test(text) || /\bminimum|min\b/i.test(text)) {
           const fpp = numericSecondDerivative(fx, xc);
           if (fpp !== null) {
@@ -356,11 +349,11 @@ export function verifyCalculus(result: BoardUnderstanding): Verification | null 
             const wantMin = /\bminimum|min\b/i.test(text);
             if (wantMax) {
               check.classification = "max";
-              check.classOk = fpp < -1e-6; // concave down
+              check.classOk = fpp < -1e-6;
               if (!check.classOk) check.reason = (check.reason ? check.reason + "; " : "") + "f''(x*) not < 0";
             } else if (wantMin) {
               check.classification = "min";
-              check.classOk = fpp > 1e-6; // concave up
+              check.classOk = fpp > 1e-6;
               if (!check.classOk) check.reason = (check.reason ? check.reason + "; " : "") + "f''(x*) not > 0";
             }
           }
@@ -372,5 +365,7 @@ export function verifyCalculus(result: BoardUnderstanding): Verification | null 
 
   if (!checks.length) return null;
   const allVerified = checks.every((c: any) => c.ok);
-  return { subject: "calculus", method: "calculus", allVerified, checks } as Verification;
+  // Use your existing union literal:
+  return { subject: "calculus", method: "calculus-numeric", allVerified, checks } as Verification;
 }
+
