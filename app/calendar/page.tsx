@@ -5,18 +5,25 @@ import { useMemo, useState } from "react";
 import { useEvents } from "@/app/hooks/useEvents";
 import type { AppEvent } from "@/lib/calendar";
 
-/* ===== date utils (local-time, no deps) ===== */
+/* ===== date utils (local, DST-safe) ===== */
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
 ];
 const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
+/** local YYYY-MM-DD */
 function ymdLocal(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** build a Date in local time from "YYYY-MM-DD" */
+function dateFromYMD(ymd: string) {
+  const [y, m, d] = ymd.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, (m || 1) - 1, d || 1);
 }
 
 function startOfMonth(d: Date) {
@@ -29,27 +36,25 @@ function addMonths(d: Date, n: number) {
   return new Date(d.getFullYear(), d.getMonth() + n, 1);
 }
 
-/** 6x7 grid covering the current month, starting Sunday */
+/** 6x7 grid (Sun start) for the visible month */
 function monthMatrix(view: Date) {
   const first = startOfMonth(view);
-  const last = endOfMonth(view);
-  const startOffset = first.getDay(); // 0..6 (Sun..Sat)
+  const startOffset = first.getDay(); // 0..6 Sun..Sat
   const gridStart = new Date(first);
-  gridStart.setDate(first.getDate() - startOffset); // back to Sunday
+  gridStart.setDate(first.getDate() - startOffset);
 
   const cells: { date: Date; inMonth: boolean; isToday: boolean }[] = [];
+  const today = new Date();
+  const todayY = today.getFullYear(), todayM = today.getMonth(), todayD = today.getDate();
+
   for (let i = 0; i < 42; i++) {
     const d = new Date(gridStart);
     d.setDate(gridStart.getDate() + i);
     const inMonth = d.getMonth() === view.getMonth();
-    const today = new Date();
-    const isToday =
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate();
+    const isToday = d.getFullYear() === todayY && d.getMonth() === todayM && d.getDate() === todayD;
     cells.push({ date: d, inMonth, isToday });
   }
-  return { cells, first, last };
+  return cells;
 }
 
 /* ===== UI helpers ===== */
@@ -67,11 +72,11 @@ export default function CalendarPage() {
 
   const today = useMemo(() => new Date(), []);
   const [view, setView] = useState<Date>(startOfMonth(today));
-  const [selected, setSelected] = useState<string>(ymdLocal(today));
+  const [selectedYMD, setSelectedYMD] = useState<string>(ymdLocal(today));
 
-  const { cells } = useMemo(() => monthMatrix(view), [view]);
+  const cells = useMemo(() => monthMatrix(view), [view]);
 
-  // group events by local day
+  // group events by local YMD
   const eventsByDay = useMemo(() => {
     const map = new Map<string, AppEvent[]>();
     for (const e of events) {
@@ -84,7 +89,7 @@ export default function CalendarPage() {
     return map;
   }, [events]);
 
-  const selectedEvents = eventsByDay.get(selected) || [];
+  const selectedEvents = eventsByDay.get(selectedYMD) || [];
 
   return (
     <div className="min-h-screen p-6 flex flex-col items-center gap-6">
@@ -127,22 +132,19 @@ export default function CalendarPage() {
           {/* Day cells */}
           <div className="grid grid-cols-7 gap-2">
             {cells.map(({ date, inMonth, isToday }) => {
-              const key = ymdLocal(date);
-              const isSelected = selected === key;
-              const dayEvents = eventsByDay.get(key) || [];
+              const ymd = ymdLocal(date);
+              const isSelected = selectedYMD === ymd;
+              const dayEvents = eventsByDay.get(ymd) || [];
               return (
                 <button
-                  key={key}
+                  key={date.toDateString()}
                   onClick={() => {
-                    setSelected(key);
-                    // if user taps a day from an adjacent month, shift view
-                    if (!inMonth) setView(startOfMonth(date));
+                    setSelectedYMD(ymd);
+                    if (!inMonth) setView(startOfMonth(date)); // navigate when tapping spillover days
                   }}
                   className={[
                     "relative aspect-square rounded-xl border text-sm flex flex-col items-center justify-start p-1",
-                    // brand outline for all days
                     inMonth ? "border-scrbl/40" : "border-scrbl/15 opacity-70",
-                    // selection / today treatments
                     isSelected ? "bg-scrbl/20 border-scrbl" : "",
                     !isSelected && isToday ? "ring-1 ring-scrbl/50" : "",
                     "hover:bg-white/5 transition"
@@ -150,7 +152,6 @@ export default function CalendarPage() {
                 >
                   <div className="w-full flex items-center justify-between">
                     <div className="text-white">{date.getDate()}</div>
-                    {/* tiny event counter dot(s) */}
                     {dayEvents.length > 0 && (
                       <div className="flex -space-x-1">
                         {Array.from({ length: Math.min(dayEvents.length, 3) }).map((_, i) => (
@@ -162,7 +163,6 @@ export default function CalendarPage() {
                       </div>
                     )}
                   </div>
-                  {/* optional: show first event title preview */}
                   {dayEvents.length > 0 && (
                     <div className="mt-1 w-full text-[10px] text-white/90 line-clamp-2 text-left">
                       {dayEvents[0].title}
@@ -178,7 +178,7 @@ export default function CalendarPage() {
 
       {/* Day details */}
       <Section
-        title={new Date(selected).toLocaleDateString([], {
+        title={dateFromYMD(selectedYMD).toLocaleDateString([], {
           weekday: "long",
           month: "short",
           day: "numeric",
@@ -223,4 +223,5 @@ export default function CalendarPage() {
     </div>
   );
 }
+
 
