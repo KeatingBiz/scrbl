@@ -5,27 +5,29 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:verifier": "tsx scripts/run_param_tests.ts"
   },
   "dependencies": {
-    "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "next-pwa": "5.6.0",
     "clsx": "2.1.1",
     "expr-eval": "2.0.2",
-    "framer-motion": "^11.0.0"
+    "framer-motion": "^11.0.0",
+    "next": "14.2.5",
+    "next-pwa": "5.6.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.18",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.5",
     "postcss": "8.4.40",
     "tailwindcss": "3.4.10",
-    "typescript": "5.5.4",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
-    "@types/node": "20.14.10"
+    "tsx": "^4.7.0",
+    "typescript": "5.5.4"
   }
 }
 
