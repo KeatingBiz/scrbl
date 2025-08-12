@@ -15,7 +15,9 @@ function loadFolders(): Folder[] {
     const raw = localStorage.getItem(FOLDERS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Folder[]) : [];
     return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 function saveFolders(folders: Folder[]) {
   if (typeof window === "undefined") return;
@@ -24,9 +26,13 @@ function saveFolders(folders: Folder[]) {
 
 function chipClasses(active = false) {
   return [
-    "px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition",
+    // chip base
+    "inline-flex items-center px-3 py-1.5 rounded-full text-sm border transition",
+    // white label + green outline look
     "text-white",
-    active ? "border-scrbl bg-white/5" : "border-scrbl/50 hover:bg-white/5"
+    active ? "border-scrbl bg-white/5" : "border-scrbl/50 hover:bg-white/5",
+    // layout controls
+    "max-w-[12rem] truncate"
   ].join(" ");
 }
 
@@ -34,18 +40,26 @@ export default function ClassesPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [active, setActive] = useState<string>(RECENTS_ID);
 
-  useEffect(() => { setFolders(loadFolders()); }, []);
+  useEffect(() => {
+    setFolders(loadFolders());
+  }, []);
 
   function addClassFolder() {
     const name = (prompt("Class name (e.g., Finance 331)") || "").trim();
     if (!name) return;
     const exists = folders.some((f) => f.name.toLowerCase() === name.toLowerCase());
-    if (exists) { alert("You already have a folder with that name."); return; }
+    if (exists) {
+      alert("You already have a folder with that name.");
+      return;
+    }
     const id = crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     const next = [...folders, { id, name }];
-    setFolders(next); saveFolders(next); setActive(id);
+    setFolders(next);
+    saveFolders(next);
+    setActive(id);
   }
 
+  // Recents shows the last captured image (visual only for now)
   const recentThumb = useMemo(() => {
     if (typeof window === "undefined") return null;
     return sessionStorage.getItem("scrbl:lastImage");
@@ -67,10 +81,13 @@ export default function ClassesPage() {
         <h1 className="text-2xl font-bold">Classes</h1>
       </div>
 
-      {/* Folder chips */}
-      <div className="w-full max-w-md overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-2">
-          <button className={chipClasses(active === RECENTS_ID)} onClick={() => setActive(RECENTS_ID)}>
+      {/* Folder chips — now wrapping instead of horizontal scroll */}
+      <div className="w-full max-w-md">
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={chipClasses(active === RECENTS_ID)}
+            onClick={() => setActive(RECENTS_ID)}
+          >
             Recents
           </button>
 
@@ -125,18 +142,9 @@ export default function ClassesPage() {
           </div>
         )}
       </section>
-
-      {/* Back to capture */}
-      <div className="w-full max-w-md">
-        <Link
-          href="/"
-          className="w-full block text-center rounded-xl py-3 mt-2 bg-white/5 text-white hover:bg-white/10 transition"
-        >
-          New Scrbl
-        </Link>
-      </div>
     </div>
   );
 }
+
 
 
