@@ -17,7 +17,6 @@ export default function Home() {
     setErr(null);
     setBusy(true);
     try {
-      // preview for result page
       const reader = new FileReader();
       const dataUrl = await new Promise<string>((res, rej) => {
         reader.onload = () => res(String(reader.result));
@@ -26,7 +25,6 @@ export default function Home() {
       });
       sessionStorage.setItem("scrbl:lastImage", dataUrl);
 
-      // send to classifier
       const fd = new FormData();
       fd.append("image", file);
       const r = await fetch("/api/classify", { method: "POST", body: fd });
@@ -93,6 +91,7 @@ export default function Home() {
               "w-40 h-40 rounded-full border-2",
               "border-scrbl text-white hover:bg-white/5",
               "transition",
+              !busy ? "camera-pulse" : "",
               busy ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
             ].join(" ")}
             aria-label="Capture or choose a photo"
@@ -144,7 +143,7 @@ export default function Home() {
         onChange={onPick}
       />
 
-      {/* Action sheet (gallery vs camera) */}
+      {/* Action sheet */}
       {chooserOpen && !busy && (
         <div
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
@@ -180,6 +179,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
