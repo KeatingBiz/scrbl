@@ -17,7 +17,7 @@ export default function Home() {
     setErr(null);
     setBusy(true);
     try {
-      // Show preview on /result
+      // preview for result page
       const reader = new FileReader();
       const dataUrl = await new Promise<string>((res, rej) => {
         reader.onload = () => res(String(reader.result));
@@ -26,7 +26,6 @@ export default function Home() {
       });
       sessionStorage.setItem("scrbl:lastImage", dataUrl);
 
-      // Send to classifier
       const fd = new FormData();
       fd.append("image", file);
       const r = await fetch("/api/classify", { method: "POST", body: fd });
@@ -42,7 +41,6 @@ export default function Home() {
       setErr(e?.message || "Upload failed");
       setBusy(false);
     } finally {
-      // reset inputs
       if (cameraRef.current) cameraRef.current.value = "";
       if (libraryRef.current) libraryRef.current.value = "";
       setChooserOpen(false);
@@ -57,11 +55,35 @@ export default function Home() {
   return (
     <div className="min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center text-center gap-6">
-        {/* Hero logo + note */}
+        {/* Hero logo */}
         <Logo size="lg" href={null} />
-        <p className="text-sm text-neutral-300 max-w-xs">
-          Snap a photo of the board to get a simple, step-by-step explanation. Make sure the writing is clear.
-        </p>
+
+        {/* Bold tagline with brand arrow */}
+        <div className="max-w-sm">
+          <div className="flex items-center justify-center gap-2 text-white font-semibold text-base sm:text-lg tracking-tight">
+            <span>Snap a photo of the whiteboard</span>
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              className="shrink-0 text-scrbl"
+              aria-hidden="true"
+            >
+              <path
+                d="M5 12h12M13 6l6 6-6 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Receive step-by-step analysis</span>
+          </div>
+          <p className="mt-2 text-sm text-neutral-300">
+            Make sure the writing is clear and in frame.
+          </p>
+        </div>
 
         {/* Big camera button */}
         <div className="mt-2 w-full max-w-sm flex flex-col items-center">
@@ -102,9 +124,6 @@ export default function Home() {
                 strokeWidth="1.75"
               />
             </svg>
-            <div className="absolute bottom-3 text-xs text-neutral-300">
-              {busy ? "Analyzing…" : "Tap to capture"}
-            </div>
           </button>
 
           {err && <div className="mt-3 text-xs text-red-400">{err}</div>}
@@ -164,4 +183,5 @@ export default function Home() {
     </div>
   );
 }
+
 
