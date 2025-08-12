@@ -6,15 +6,14 @@ import clsx from "clsx";
 
 const tabs = [
   { href: "/", label: "Scrbl" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/calendar", label: "Calendar" },
+  { href: "/gallery", label: "Classes" }, // renamed from Gallery
 ];
 
 export default function TabBar() {
   const pathname = usePathname() || "/";
   return (
     <nav className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-black/70 backdrop-blur supports-[backdrop-filter]:bg-black/40">
-      <div className="mx-auto max-w-md grid grid-cols-3">
+      <div className="mx-auto max-w-md grid grid-cols-2">
         {tabs.map((t) => {
           const active = pathname === t.href || (t.href !== "/" && pathname.startsWith(t.href));
           return (
@@ -23,9 +22,9 @@ export default function TabBar() {
               href={t.href}
               className={clsx(
                 "py-3 text-center text-sm transition",
-                active ? "tab-active text-scrbl font-semibold" : "text-neutral-300 hover:text-white"
+                active ? "tab-active font-semibold" : "text-neutral-300 hover:text-white"
               )}
-              style={active ? { color: "#2AEF7C" } : undefined}
+              style={active ? { color: "#2AEF7C" } : undefined} // hard-ensure brand green
             >
               {t.label}
             </Link>
@@ -35,6 +34,7 @@ export default function TabBar() {
     </nav>
   );
 }
+
 
 
 
