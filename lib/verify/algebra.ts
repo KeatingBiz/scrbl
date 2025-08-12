@@ -134,7 +134,10 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
   const keys = Object.keys(foundPairs);
   if (keys.length > 0) {
     // If only a subset present (e.g., x=..., but y is not mentioned), we still yield partial and let eval fail if needed
-    function* product(i: number, acc: Record<string, number>) {
+    function* product(
+  i: number,
+  acc: Record<string, number>
+): Generator<Record<string, number>, void, unknown> {
       if (i >= keys.length) {
         yield acc;
         return;
