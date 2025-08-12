@@ -22,13 +22,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="bg-black text-white">
         <div className="min-h-screen mx-auto max-w-md relative">
-          <header className="sticky top-0 z-40 bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
+          <header
+            className="sticky top-0 z-40 border-b border-white/10 bg-black/60 supports-[backdrop-filter]:bg-black/40 backdrop-blur transform-gpu will-change-transform isolation-auto"
+            style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" as any }}
+          >
             <div className="px-4 py-3">
               <Logo size="sm" href="/" />
             </div>
           </header>
 
-          <main className="pb-20">{children}</main>
+          {/* isolate main content to avoid cross-paint with header during first swipe */}
+          <main className="pb-20 isolation-auto">{children}</main>
 
           <TabBar />
         </div>
