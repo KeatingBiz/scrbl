@@ -134,7 +134,7 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
   const Q = toWatts(findValWithUnit(text, new RegExp(`\\bQ\\s*=\\s*${NUM}`, "i"), [/w\b/i, /kw\b/i]));
 
   /* ===== 1) Conduction (planar): q = k A ΔT / L ===== */
-  if (/\bconduction\b|q\s*=\s*k\s*a\s*\*/i.test(lower) || /\bwall\b|slab|plate/i.test(lower)) {
+  if (/\bconduction\b|q\s*=\s*k\s*a/i.test(lower) || /\bwall\b|slab|plate/i.test(lower)) {
     const Ause = A ?? areaFromD(D1 ?? null);
     const Luse = L ?? t ?? null;
     const dTuse = dT ?? ((T1 != null && T2 != null) ? Math.abs(T1 - T2) : null);
@@ -165,7 +165,7 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
       }
       // single layer fallback
       if (Rcond === 0 && k != null && (L ?? t) != null) {
-        Rcond = ( (L ?? t)! ) / (k * Ai);
+        Rcond = ((L ?? t)!) / (k * Ai);
       }
 
       // convection terms
@@ -221,15 +221,16 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
     const hUse = h ?? toWPerM2_K(findValWithUnit(text, new RegExp(`\\bh\\s*=\\s*${NUM}`, "i"), [/w\/m\^?2·?k\b/i]));
     const kUse = k;
     const Lf = L ?? toMeters(findValWithUnit(text, new RegExp(`\\bL_f\\s*=\\s*${NUM}`, "i"), [/m\b/i, /cm\b/i, /mm\b/i]));
-    const P = toMeters(findValWithUnit(text, new RegExp(`\\bP\\s*=\\s*${NUM}`, "i"), [/m\b/i])) ?? null;     // perimeter (m)
+    const P = toMeters(findValWithUnit(text, new RegExp(`\\bP\\s*=\\s*${NUM}`, "i"), [/m\b/i])) ?? null;       // perimeter (m)
     const Ac = toAreaM2(findValWithUnit(text, new RegExp(`\\bA_c\\s*=\\s*${NUM}`, "i"), [/m\^?2\b/i])) ?? null; // cross-sec area
     const Tb = Ts ?? toKelvin(findValWithUnit(text, new RegExp(`\\bT_b\\s*=\\s*${NUM}`, "i"), [/k\b/i, /°c|c\b/i, /°f|f\b/i]));
     const T_infty = Tinf;
 
     if (hUse != null && kUse != null && Lf != null && P != null && Ac != null && Tb != null && T_infty != null) {
-    const m = Math.sqrt((hUse * P) / (kUse * Ac));
-    const qf = Math.sqrt(hUse * P * kUse * Ac) * (Tb - T_infty) * Math.tanh(m * Lf);
-  ...
+      const m = Math.sqrt((hUse * P) / (kUse * Ac));
+      const qf = Math.sqrt(hUse * P * kUse * Ac) * (Tb - T_infty) * Math.tanh(m * Lf);
+      const ok = relClose(qf, finalN, 1e-4, 1e-6) || approxEqual(qf, finalN, 1e-2);
+      checks.push({ value: `q_fin=${finalN}`, ok, lhs: qf, rhs: finalN, reason: ok ? null : "fin heat rate mismatch" } as any);
     }
   }
 
@@ -237,21 +238,26 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
   if (/\br_total|r\\s*=\s*|thermal\s*resistance\b/i.test(lower) && finalN != null) {
     const Rtot = findNumber(lower, new RegExp(`\\bR(?:_?total)?\\s*=\\s*${NUM}`, "i"));
     if (Rtot != null) {
-      const dTuse = dT ?? ((T1 != null && T2 != null) ? Math.abs(T1 - T2) : (Ts != null && Tinf != null ? Math.abs(Ts - Tinf) : null));
+      const dTuse =
+        dT ??
+        ((T1 != null && T2 != null)
+          ? Math.abs(T1 - T2)
+          : (Ts != null && Tinf != null ? Math.abs(Ts - Tinf) : null));
       if (dTuse != null) {
         const q = dTuse / Rtot;
         const ok = relClose(q, finalN, 1e-5, 1e-6) || approxEqual(q, finalN, 1e-3);
         checks.push({ value: `q=${finalN}`, ok, lhs: q, rhs: finalN, reason: ok ? null : "q = ΔT/R_total mismatch" } as any);
       }
-    } else {
-      // maybe they want R_total and gave q
-      if (Q != null) {
-        const dTuse = dT ?? ((T1 != null && T2 != null) ? Math.abs(T1 - T2) : null);
-        if (dTuse != null) {
-          const Rcalc = dTuse / Q;
-          const ok = relClose(Rcalc, finalN, 1e-5, 1e-6) || approxEqual(Rcalc, finalN, 1e-4);
-          checks.push({ value: `R_total=${finalN}`, ok, lhs: Rcalc, rhs: finalN, reason: ok ? null : "R_total mismatch" } as any);
-        }
+    } else if (Q != null) {
+      const dTuse =
+        dT ??
+        ((T1 != null && T2 != null)
+          ? Math.abs(T1 - T2)
+          : (Ts != null && Tinf != null ? Math.abs(Ts - Tinf) : null));
+      if (dTuse != null) {
+        const Rcalc = dTuse / Q;
+        const ok = relClose(Rcalc, finalN, 1e-5, 1e-6) || approxEqual(Rcalc, finalN, 1e-4);
+        checks.push({ value: `R_total=${finalN}`, ok, lhs: Rcalc, rhs: finalN, reason: ok ? null : "R_total mismatch" } as any);
       }
     }
   }
@@ -261,3 +267,4 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
   const allVerified = checks.every((c: any) => c.ok);
   return { subject: "heat", method: "heat-transfer", allVerified, checks } as unknown as Verification;
 }
+
