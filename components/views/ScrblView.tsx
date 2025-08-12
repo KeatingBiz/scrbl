@@ -1,8 +1,6 @@
 // components/views/ScrblView.tsx
 "use client";
 import { useRef, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import Logo from "@/components/Logo";
 import type { BoardUnderstanding, Step } from "@/lib/types";
 import { getFolders, addItem, assignItemToFolder, type Folder } from "@/lib/storage";
 import { fileToDataURL, makeThumbnail } from "@/lib/image";
@@ -48,7 +46,6 @@ function StepCardMini({ s }: { s: Step }) {
 }
 
 export default function ScrblView() {
-  const router = useRouter();
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
 
@@ -124,9 +121,10 @@ export default function ScrblView() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
+    // Pane root: isolated & relative so overlays are clipped to this pane only
+    <div className="relative isolate min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
       <div className="flex flex-col items-center text-center gap-7">
-        <Logo size="lg" href={null} />
+        {/* Hero logo is already in the global header; keep only capture UI here */}
         <div className="max-w-sm">
           <div className="flex items-center justify-center gap-2 text-white font-extrabold text-xl sm:text-2xl leading-tight tracking-tight">
             <span>Snap the lecture whiteboard</span>
@@ -161,26 +159,35 @@ export default function ScrblView() {
         </div>
       </div>
 
+      {/* Hidden inputs */}
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
       <input ref={libraryRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
 
+      {/* Source chooser (absolute, scoped to this pane) */}
       {chooserOpen && !busy && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
+          className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setChooserOpen(false); }}
         >
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-black/85 p-4">
             <div className="flex flex-col gap-2">
-              <button className="btn-scrbl rounded-xl py-3 font-semibold" onClick={() => { setChooserOpen(false); setTimeout(() => cameraRef.current?.click(), 0); }}>Take Photo</button>
-              <button className="btn-scrbl rounded-xl py-3 font-semibold" onClick={() => { setChooserOpen(false); setTimeout(() => libraryRef.current?.click(), 0); }}>Choose from Library</button>
-              <button className="rounded-xl py-3 font-semibold bg-white/5 hover:bg-white/10 transition" onClick={() => setChooserOpen(false)}>Cancel</button>
+              <button className="btn-scrbl rounded-xl py-3 font-semibold" onClick={() => { setChooserOpen(false); setTimeout(() => cameraRef.current?.click(), 0); }}>
+                Take Photo
+              </button>
+              <button className="btn-scrbl rounded-xl py-3 font-semibold" onClick={() => { setChooserOpen(false); setTimeout(() => libraryRef.current?.click(), 0); }}>
+                Choose from Library
+              </button>
+              <button className="rounded-xl py-3 font-semibold bg-white/5 hover:bg-white/10 transition" onClick={() => setChooserOpen(false)}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Analyzing overlay (absolute) */}
       {analyzing && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-6">
+        <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm grid place-items-center p-6">
           <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-black/90 p-4 text-center">
             <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-scrbl border-t-transparent animate-spin" />
             <div className="text-sm font-semibold">Analyzing board…</div>
@@ -189,9 +196,10 @@ export default function ScrblView() {
         </div>
       )}
 
+      {/* RESULT MODAL (absolute) */}
       {resultOpen && previewResult && previewUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setResultOpen(false); }}
         >
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/90 p-4">
@@ -249,3 +257,4 @@ export default function ScrblView() {
     </div>
   );
 }
+
