@@ -224,13 +224,12 @@ export function verifyHeat(result: BoardUnderstanding): Verification | null {
     const P = toMeters(findValWithUnit(text, new RegExp(`\\bP\\s*=\\s*${NUM}`, "i"), [/m\b/i])) ?? null;     // perimeter (m)
     const Ac = toAreaM2(findValWithUnit(text, new RegExp(`\\bA_c\\s*=\\s*${NUM}`, "i"), [/m\^?2\b/i])) ?? null; // cross-sec area
     const Tb = Ts ?? toKelvin(findValWithUnit(text, new RegExp(`\\bT_b\\s*=\\s*${NUM}`, "i"), [/k\b/i, /°c|c\b/i, /°f|f\b/i]));
-    const T∞ = Tinf;
+    const T_infty = Tinf;
 
-    if (hUse != null && kUse != null && Lf != null && P != null && Ac != null && Tb != null && T∞ != null) {
-      const m = Math.sqrt((hUse * P) / (kUse * Ac));
-      const qf = Math.sqrt(hUse * P * kUse * Ac) * (Tb - T∞) * Math.tanh(m * Lf);
-      const ok = relClose(qf, finalN, 1e-4, 1e-6) || approxEqual(qf, finalN, 1e-2);
-      checks.push({ value: `q_fin=${finalN}`, ok, lhs: qf, rhs: finalN, reason: ok ? null : "fin heat rate mismatch" } as any);
+    if (hUse != null && kUse != null && Lf != null && P != null && Ac != null && Tb != null && T_infty != null) {
+    const m = Math.sqrt((hUse * P) / (kUse * Ac));
+    const qf = Math.sqrt(hUse * P * kUse * Ac) * (Tb - T_infty) * Math.tanh(m * Lf);
+  ...
     }
   }
 
