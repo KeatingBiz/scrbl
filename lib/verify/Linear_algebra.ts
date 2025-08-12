@@ -57,7 +57,6 @@ function determinant(Ain: Mat): number {
   if (n !== m) return NaN;
   let det = 1;
   for (let i = 0; i < n; i++) {
-    // pivot
     let piv = i, val = Math.abs(A[i][i]);
     for (let r = i + 1; r < n; r++) {
       const v = Math.abs(A[r][i]);
@@ -106,22 +105,17 @@ function rank(A: Mat, tol = 1e-10): number {
 function solveLinear(A: Mat, b: Vec): Vec | null {
   const n = A.length, m = A[0]?.length ?? 0;
   if (n !== m || b.length !== n) return null;
-  // Augmented
   const M: Mat = A.map((row, i) => row.concat([b[i]]));
-  // Elimination with partial pivot
   for (let i = 0; i < n; i++) {
-    // pivot
     let piv = i, val = Math.abs(M[i][i]);
     for (let r = i + 1; r < n; r++) {
       const v = Math.abs(M[r][i]);
       if (v > val) { val = v; piv = r; }
     }
-    if (val < EPS) return null; // singular
+    if (val < EPS) return null;
     if (piv !== i) [M[i], M[piv]] = [M[piv], M[i]];
-    // normalize
     const inv = 1 / M[i][i];
     for (let j = i; j <= n; j++) M[i][j] *= inv;
-    // eliminate
     for (let r = 0; r < n; r++) if (r !== i) {
       const f = M[r][i];
       if (Math.abs(f) < EPS) continue;
@@ -134,9 +128,7 @@ function inverse(A: Mat): Mat | null {
   const n = A.length, m = A[0]?.length ?? 0;
   if (n !== m) return null;
   const M: Mat = A.map((row, i) => row.concat(eye(n)[i]));
-  // Gauss-Jordan
   for (let i = 0; i < n; i++) {
-    // pivot
     let piv = i, val = Math.abs(M[i][i]);
     for (let r = i + 1; r < n; r++) {
       const v = Math.abs(M[r][i]);
@@ -144,17 +136,14 @@ function inverse(A: Mat): Mat | null {
     }
     if (val < EPS) return null;
     if (piv !== i) [M[i], M[piv]] = [M[piv], M[i]];
-    // normalize
     const inv = 1 / M[i][i];
     for (let j = 0; j < 2 * n; j++) M[i][j] *= inv;
-    // eliminate
     for (let r = 0; r < n; r++) if (r !== i) {
       const f = M[r][i];
       if (Math.abs(f) < EPS) continue;
       for (let j = 0; j < 2 * n; j++) M[r][j] -= f * M[i][j];
     }
   }
-  // right half
   return M.map(row => row.slice(n));
 }
 
@@ -176,22 +165,17 @@ function parseNumberList(s: string): number[] {
   return matches.map(Number).filter(isFiniteNum);
 }
 function parseVector(text: string): Vec | null {
-  // Match [1 2 3], <1,2,3>, (1,2,3)
   const m = text.match(/[\[\(<]\s*([^\]\)>]+)\s*[\]\)>]/);
   if (!m) return null;
   const nums = parseNumberList(m[1]);
   return nums.length > 0 ? nums : null;
 }
 function parseMatrix(text: string): Mat | null {
-  // Try [[a,b];[c,d]] or [a b; c d] or rows split by newline/semicolon
   const m = text.match(/\[\s*([\s\S]*?)\s*\]/);
   if (!m) return null;
   const inside = m[1].trim();
-  // Split rows by ; or newline
-  const rows = inside
-    .split(/;|\n/).map(r => r.trim()).filter(Boolean);
+  const rows = inside.split(/;|\n/).map(r => r.trim()).filter(Boolean);
   const mat: Mat = rows.map(r => {
-    // split by spaces or commas
     const nums = parseNumberList(r);
     return nums;
   });
@@ -200,9 +184,7 @@ function parseMatrix(text: string): Mat | null {
   if (!mat.every(r => r.length === n)) return null;
   return mat;
 }
-
 function findLabeledMatrix(blob: string, label: string): Mat | null {
-  // e.g., A = [ ... ]
   const re = new RegExp(`${label}\\s*=\\s*(\\[[\\s\\S]*?\\])`, "i");
   const m = blob.match(re);
   if (m && m[1]) return parseMatrix(m[1]);
@@ -210,7 +192,7 @@ function findLabeledMatrix(blob: string, label: string): Mat | null {
 }
 function findAnyMatrices(blob: string): Mat[] {
   const mats: Mat[] = [];
-  const re = /\[[^\[\]]*?(?:\[[\s\S]*?\][^\[\]]*?)*\]/g; // grab bracketed chunks
+  const re = /\[[^\[\]]*?(?:\[[\s\S]*?\][^\[\]]*?)*\]/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(blob)) !== null) {
     const A = parseMatrix(m[0]);
@@ -252,7 +234,7 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
 
   const checks: Verification["checks"] = [];
 
-  /* ---------- Determinant ---------- */
+  /* Determinant */
   if (/\bdet|determinant|\|\s*A\s*\|/.test(lower) && finalNum != null) {
     let A = findLabeledMatrix(text, "A");
     if (!A) {
@@ -268,7 +250,7 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Rank ---------- */
+  /* Rank */
   if (/\brank\b/.test(lower) && finalNum != null) {
     let A = findLabeledMatrix(text, "A");
     if (!A) {
@@ -282,14 +264,12 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Solve Ax=b ---------- */
+  /* Solve Ax=b */
   if (/\bax\s*=\s*b\b|\bsolve\b|\bsolution\b/.test(lower) && finalVec) {
     let A = findLabeledMatrix(text, "A");
     let b: Vec | null = null;
-    // Try b vector after "b="
     const bm = text.match(/\bb\s*=\s*([\[\(<][^\]\)>]+[\]\)>])/i);
     if (bm && bm[1]) b = parseVector(bm[1]);
-    // Fallback: first square matrix is A, next vector is b
     if (!A) {
       const mats = findAnyMatrices(text);
       A = mats.find(M => shape(M)[0] === shape(M)[1]) || null;
@@ -307,11 +287,10 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Inverse A^{-1} ---------- */
+  /* Inverse A^{-1} */
   if (/\binverse\b|A\^?-?1\b/.test(lower) && finalMat) {
     let A = findLabeledMatrix(text, "A");
     if (!A) {
-      // Choose a square matrix different in size from final to avoid picking the inverse itself
       const mats = findAnyMatrices(text);
       A = mats.find(M => { const [m, n] = shape(M); return m === n && !(finalMat && shape(finalMat)[0] === m); }) || null;
     }
@@ -324,7 +303,7 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Eigenvalues (2×2) ---------- */
+  /* Eigenvalues (2×2) */
   if (/\beigenvalue|eigenpair|eigs?\b/.test(lower) && finalVec) {
     let A = findLabeledMatrix(text, "A");
     if (!A) {
@@ -334,7 +313,6 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     if (A && shape(A)[0] === 2 && shape(A)[1] === 2) {
       const eigs = eigenvals2(A);
       if (eigs) {
-        // Compare as sets (order-insensitive) vs the numbers present in final vector
         const target = finalVec.slice();
         if (target.length >= 1 && target.length <= 2) {
           const matched =
@@ -348,8 +326,7 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Vector: dot, cross, norm, projection ---------- */
-  // dot
+  /* Vectors: dot, cross, norm, projection */
   if (/\bdot\s*product|a\.\s*b|a\s*·\s*b|\b(a|u)\s*·\s*(b|v)\b/i.test(lower) && finalNum != null) {
     const vs = findAnyVectors(text);
     if (vs.length >= 2 && vs[0].length === vs[1].length) {
@@ -358,7 +335,6 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
       checks.push({ value: `dot=${finalNum}`, ok, lhs: val, rhs: finalNum, reason: ok ? null : "dot product mismatch" } as any);
     }
   }
-  // cross (3D)
   if (/\bcross\s*product|a\s*×\s*b|a\s*x\s*b\b/i.test(lower) && finalVec) {
     const vs = findAnyVectors(text);
     if (vs.length >= 2 && vs[0].length === 3 && vs[1].length === 3) {
@@ -372,7 +348,6 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
       checks.push({ value: `cross≈${JSON.stringify(finalVec)}`, ok, lhs: val[0], rhs: finalVec[0], reason: ok ? null : "cross product mismatch" } as any);
     }
   }
-  // norm
   if (/\bnorm\b|\|\s*\w+\s*\|/.test(lower) && finalNum != null) {
     const v = findAnyVectors(text)[0];
     if (v) {
@@ -381,7 +356,6 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
       checks.push({ value: `||v||=${finalNum}`, ok, lhs: val, rhs: finalNum, reason: ok ? null : "norm mismatch" } as any);
     }
   }
-  // projection of a onto b
   if (/\bprojection|proj\s*of\s*a\s*onto\s*b|proj_b\(a\)|proj\s*\w+\s*\(\s*\w+\s*\)/i.test(lower) && finalVec) {
     const vs = findAnyVectors(text);
     if (vs.length >= 2 && vs[0].length === vs[1].length) {
@@ -397,8 +371,8 @@ export function verifyLinearAlgebra(result: BoardUnderstanding): Verification | 
     }
   }
 
-  /* ---------- Verdict ---------- */
   if (!checks.length) return null;
   const allVerified = checks.every((c: any) => c.ok);
   return { subject: "linear-algebra", method: "linear-algebra", allVerified, checks } as unknown as Verification;
 }
+
