@@ -4,7 +4,8 @@ import { useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import type { BoardUnderstanding, Step } from "@/lib/types";
-import { getFolders, addItem, assignItemToFolder, Folder } from "@/lib/storage";
+import { getFolders, addItem, assignItemToFolder, type Folder } from "@/lib/storage";
+import { fileToDataURL, makeThumbnail } from "@/lib/image";
 
 function StepCardMini({ s }: { s: Step }) {
   return (
@@ -36,7 +37,10 @@ export default function Home() {
   const [err, setErr] = useState<string | null>(null);
   const [chooserOpen, setChooserOpen] = useState(false);
 
-  // Modal state
+  // Loading overlay while analyzing
+  const [analyzing, setAnalyzing] = useState(false);
+
+  // Result modal
   const [resultOpen, setResultOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewResult, setPreviewResult] = useState<BoardUnderstanding | null>(null);
@@ -59,40 +63,55 @@ export default function Home() {
   async function handleFile(file: File) {
     setErr(null);
     setBusy(true);
+    setAnalyzing(true);
     try {
-      // Read image for preview
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((res, rej) => {
-        reader.onload = () => res(String(reader.result));
-        reader.onerror = () => rej(new Error("Failed to read file"));
-        reader.readAsDataURL(file);
-      });
+      // 1) read full for /result page
+      const fullDataUrl = await fileToDataURL(file);
+      // 2) make small thumbnail for storage
+      let thumb = await makeThumbnail(fullDataUrl, 640, 0.8);
 
-      // Send to classifier
+      // 3) classify (show analyzing overlay)
       const fd = new FormData();
       fd.append("image", file);
       const r = await fetch("/api/classify", { method: "POST", body: fd });
-      if (!r.ok) throw new Error((await r.text().catch(() => "")) || `HTTP ${r.status}`);
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        throw new Error(text || `HTTP ${r.status}`);
+      }
       const json = (await r.json()) as BoardUnderstanding;
 
-      // Save to Recents (all items), open modal
-      const saved = addItem({ imageDataUrl: dataUrl, result: json, folderId: null });
-      setSavedItemId(saved.id);
-      setPreviewUrl(dataUrl);
+      // 4) save to Recents (thumb only) — handle quota by evicting if necessary
+      try {
+        const saved = addItem({ thumbDataUrl: thumb, result: json, folderId: null });
+        setSavedItemId(saved.id);
+      } catch (e) {
+        // if still too big, try harsher compression once
+        try {
+          thumb = await makeThumbnail(fullDataUrl, 480, 0.6);
+          const saved = addItem({ thumbDataUrl: thumb, result: json, folderId: null });
+          setSavedItemId(saved.id);
+        } catch (e2: any) {
+          console.error("Saving failed:", e2);
+          // continue without blocking the UX
+          setSavedItemId(null);
+        }
+      }
+
+      // 5) open modal with result + image, prime /result page
+      setPreviewUrl(fullDataUrl);
       setPreviewResult(json);
       setFolders(getFolders());
       setSelectedFolderId("");
       setResultOpen(true);
-
-      // (still keep sessionStorage for /result if user navigates)
-      sessionStorage.setItem("scrbl:lastImage", dataUrl);
+      sessionStorage.setItem("scrbl:lastImage", fullDataUrl);
       sessionStorage.setItem("scrbl:lastResult", JSON.stringify(json));
     } catch (e: any) {
       setErr(e?.message || "Upload failed");
     } finally {
+      setAnalyzing(false);
       setBusy(false);
-      if (cameraRef.current) cameraRef.current.value = "";
-      if (libraryRef.current) libraryRef.current.value = "";
+      cameraRef.current && (cameraRef.current.value = "");
+      libraryRef.current && (libraryRef.current.value = "");
       setChooserOpen(false);
     }
   }
@@ -148,7 +167,7 @@ export default function Home() {
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
       <input ref={libraryRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
 
-      {/* Source chooser (no heading) */}
+      {/* Source chooser */}
       {chooserOpen && !busy && (
         <div
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
@@ -156,25 +175,30 @@ export default function Home() {
         >
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-black/85 p-4">
             <div className="flex flex-col gap-2">
-              <button
-                className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => { setChooserOpen(false); setTimeout(() => cameraRef.current?.click(), 0); }}
-              >
+              <button className="btn-scrbl rounded-xl py-3 font-semibold"
+                onClick={() => { setChooserOpen(false); setTimeout(() => cameraRef.current?.click(), 0); }}>
                 Take Photo
               </button>
-              <button
-                className="btn-scrbl rounded-xl py-3 font-semibold"
-                onClick={() => { setChooserOpen(false); setTimeout(() => libraryRef.current?.click(), 0); }}
-              >
+              <button className="btn-scrbl rounded-xl py-3 font-semibold"
+                onClick={() => { setChooserOpen(false); setTimeout(() => libraryRef.current?.click(), 0); }}>
                 Choose from Library
               </button>
-              <button
-                className="rounded-xl py-3 font-semibold bg-white/5 hover:bg-white/10 transition"
-                onClick={() => setChooserOpen(false)}
-              >
+              <button className="rounded-xl py-3 font-semibold bg-white/5 hover:bg-white/10 transition"
+                onClick={() => setChooserOpen(false)}>
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analyzing overlay */}
+      {analyzing && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-6">
+          <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-black/90 p-4 text-center">
+            <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-scrbl border-t-transparent animate-spin" />
+            <div className="text-sm font-semibold">Analyzing board…</div>
+            <div className="mt-1 text-xs text-neutral-400">Finding steps, answers, and dates</div>
           </div>
         </div>
       )}
@@ -188,12 +212,7 @@ export default function Home() {
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/90 p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold">{headline}</h2>
-              <button
-                onClick={() => setResultOpen(false)}
-                className="rounded-lg px-2 py-1 bg-white/5 hover:bg-white/10 text-sm"
-              >
-                ×
-              </button>
+              <button onClick={() => setResultOpen(false)} className="rounded-lg px-2 py-1 bg-white/5 hover:bg-white/10 text-sm">×</button>
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
@@ -201,7 +220,6 @@ export default function Home() {
                 <img src={previewUrl} alt="capture" className="w-full h-full object-cover" />
               </div>
               <div className="space-y-2">
-                {/* Final answer / summary */}
                 {previewResult.type !== "ANNOUNCEMENT" ? (
                   <>
                     {previewResult.final && (
@@ -210,7 +228,6 @@ export default function Home() {
                         <div className="text-sm mt-1">✅ {previewResult.final}</div>
                       </div>
                     )}
-                    {/* A few steps */}
                     <div className="space-y-2 max-h-44 overflow-auto pr-1">
                       {(previewResult.steps || []).slice(0, 4).map(s => <StepCardMini key={s.n} s={s} />)}
                     </div>
@@ -223,7 +240,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Add to class controls */}
             <div className="mt-4 flex flex-col sm:flex-row gap-2">
               <select
                 value={selectedFolderId}
@@ -231,9 +247,7 @@ export default function Home() {
                 className="flex-1 rounded-xl bg-black/30 border border-scrbl/50 text-white px-3 py-2 outline-none"
               >
                 <option value="">Select class…</option>
-                {folders.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
+                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
 
               <button
@@ -261,3 +275,4 @@ export default function Home() {
     </div>
   );
 }
+
