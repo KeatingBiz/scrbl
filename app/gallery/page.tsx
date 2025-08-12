@@ -15,9 +15,7 @@ function loadFolders(): Folder[] {
     const raw = localStorage.getItem(FOLDERS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Folder[]) : [];
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 function saveFolders(folders: Folder[]) {
   if (typeof window === "undefined") return;
@@ -27,9 +25,9 @@ function saveFolders(folders: Folder[]) {
 function chipClasses(active = false) {
   return [
     "px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition",
-    active
-      ? "border-scrbl text-scrbl bg-scrbl/10"
-      : "border-scrbl/40 text-scrbl hover:bg-scrbl/10"
+    "text-white",                                // white words
+    active ? "border-scrbl bg-white/5"           // stronger outline when active
+           : "border-scrbl/50 hover:bg-white/5"  // lighter outline when idle
   ].join(" ");
 }
 
@@ -37,29 +35,18 @@ export default function GalleryPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [active, setActive] = useState<string>(RECENTS_ID);
 
-  // seed folders (keep Recents implicit so it’s always first)
-  useEffect(() => {
-    const existing = loadFolders();
-    setFolders(existing);
-  }, []);
+  useEffect(() => { setFolders(loadFolders()); }, []);
 
   function addClassFolder() {
     const name = (prompt("Class name (e.g., Finance 331)") || "").trim();
     if (!name) return;
-    // avoid dupes by name (case-insensitive)
     const exists = folders.some((f) => f.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-      alert("You already have a folder with that name.");
-      return;
-    }
+    if (exists) { alert("You already have a folder with that name."); return; }
     const id = crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
     const next = [...folders, { id, name }];
-    setFolders(next);
-    saveFolders(next);
-    setActive(id);
+    setFolders(next); saveFolders(next); setActive(id);
   }
 
-  // For now, Recents just shows the last captured image (visual only).
   const recentThumb = useMemo(() => {
     if (typeof window === "undefined") return null;
     return sessionStorage.getItem("scrbl:lastImage");
@@ -70,6 +57,9 @@ export default function GalleryPage() {
     const f = folders.find((x) => x.id === active);
     return f?.name || "Folder";
   }, [active, folders]);
+
+  const itemCount =
+    active === RECENTS_ID ? (recentThumb ? 1 : 0) : 0;
 
   return (
     <div className="min-h-screen p-6 flex flex-col items-center gap-6">
@@ -82,10 +72,7 @@ export default function GalleryPage() {
       {/* Folder chips */}
       <div className="w-full max-w-md overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-2">
-          <button
-            className={chipClasses(active === RECENTS_ID)}
-            onClick={() => setActive(RECENTS_ID)}
-          >
+          <button className={chipClasses(active === RECENTS_ID)} onClick={() => setActive(RECENTS_ID)}>
             Recents
           </button>
 
@@ -110,13 +97,11 @@ export default function GalleryPage() {
       <section className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-2">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <span className="text-[11px] px-2 py-0.5 rounded-full border border-scrbl/30 text-scrbl">
-            {active === RECENTS_ID ? (recentThumb ? 1 : 0) : 0} item
-            {active === RECENTS_ID ? (recentThumb && 1 === 1 ? "" : "s") : ""}
+          <span className="text-[11px] px-2 py-0.5 rounded-full border border-scrbl/30 text-white">
+            {itemCount} item{itemCount === 1 ? "" : "s"}
           </span>
         </div>
 
-        {/* Recents grid (visual only for now) */}
         {active === RECENTS_ID ? (
           recentThumb ? (
             <div className="grid grid-cols-3 gap-2">
@@ -130,7 +115,6 @@ export default function GalleryPage() {
                 </div>
                 <div className="mt-1 text-xs text-neutral-400">Latest snap</div>
               </Link>
-              {/* As we add more captures later, we’ll map them here */}
             </div>
           ) : (
             <div className="text-xs text-neutral-500 border border-dashed border-white/10 rounded-xl p-6 text-center">
@@ -138,7 +122,6 @@ export default function GalleryPage() {
             </div>
           )
         ) : (
-          // Class folders (empty visual shell for now)
           <div className="text-xs text-neutral-500 border border-dashed border-white/10 rounded-xl p-6 text-center">
             Nothing in this class yet. After your next scrbl, you’ll be able to add it here.
           </div>
@@ -157,4 +140,5 @@ export default function GalleryPage() {
     </div>
   );
 }
+
 
