@@ -22,6 +22,8 @@ export default function TwoPaneShell({
   const controls = useAnimation();
   const snapping = useRef(false);
 
+  const THRESHOLD = 0.4; // 40% away from current pane to commit (works both directions)
+
   // measure width
   useEffect(() => {
     const measure = () => setW(wrapRef.current?.clientWidth || 0);
@@ -52,7 +54,6 @@ export default function TwoPaneShell({
     snapping.current = true;
     await animateTo(index);
 
-    // Only push if we’re changing pages
     if (index !== active) {
       router.push(index === 0 ? "/" : "/gallery");
     }
@@ -84,21 +85,22 @@ export default function TwoPaneShell({
         onDragEnd={() => {
           lockVertScroll(false);
           if (!w) return;
-          // Read the actual position at release
+
+          // Progress (0 = left pane fully in view, 1 = right pane fully in view)
           const currentX = x.get();
-          const progress = Math.min(1, Math.max(0, -currentX / w)); // 0..1
+          const progress = Math.min(1, Math.max(0, -currentX / w)); // clamp to [0,1]
 
-          // Strict 40% rule: > 0.4 goes to right pane, else left.
-          const target: 0 | 1 = progress > 0.4 ? 1 : 0;
-
-          // If target is the same as current route, just snap back; else commit (animate + push)
-          if (target === active) {
+          // Distance moved away from the CURRENT pane (symmetrical threshold)
+          const moved = Math.abs(progress - active); // 0..1 away from current
+          if (moved >= THRESHOLD) {
+            const target: 0 | 1 = progress > active ? 1 : 0; // which side did we move toward?
+            commit(target);
+          } else {
+            // snap back to current
             controls.start({
               x: -active * w,
               transition: { type: "spring", stiffness: 320, damping: 32 },
             });
-          } else {
-            commit(target);
           }
         }}
       >
