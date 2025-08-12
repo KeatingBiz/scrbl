@@ -7,7 +7,6 @@ import {
   motion,
   useAnimation,
   useMotionValue,
-  useMotionValueEvent,
   useDragControls,
 } from "framer-motion";
 
@@ -29,9 +28,7 @@ export default function TwoPaneShell({
   const dragControls = useDragControls();
 
   const snapping = useRef(false);
-  const COMMIT = 0.12;   // commit threshold
-  const RESETTOP = 0.6; // start smooth scroll-to-top at 60% toward destination
-  const firedForDest = useRef<0 | 1 | null>(null);
+  const COMMIT = 0.12; // commit threshold
 
   // Direction lock state
   const pointerIdRef = useRef<number | null>(null);
@@ -57,15 +54,19 @@ export default function TwoPaneShell({
   useEffect(() => {
     const prev = document.body.style.overflowY;
     document.body.style.overflowY = active === 0 ? "hidden" : "auto";
-    return () => { document.body.style.overflowY = prev; };
+    return () => {
+      document.body.style.overflowY = prev;
+    };
   }, [active]);
 
-  // Smooth scroll helper
-  function smoothScrollToTop(duration = 600) {
-    const start = window.scrollY || document.documentElement.scrollTop || 0;
+  // Smooth scroll helper — only called on commit now
+  function smoothScrollToTop(duration = 500) {
+    const start =
+      window.scrollY || document.documentElement.scrollTop || 0;
     if (start <= 0) return;
     const startTime = performance.now();
-    const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const ease = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const step = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration);
       const eased = ease(t);
@@ -86,34 +87,22 @@ export default function TwoPaneShell({
     if (!w || snapping.current) return;
     snapping.current = true;
 
+    // Ensure the document is at top to avoid any repaint jank during/after navigation.
+    if (index !== active) smoothScrollToTop(450);
+
     await animateTo(index);
+
     if (index !== active) {
-      // Disable Next.js instant scroll so our smooth scroll (already started) isn't overridden
+      // Prevent Next.js from auto-scrolling; we already handled it.
       router.push(index === 0 ? "/" : "/gallery", { scroll: false });
     }
-    setTimeout(() => (snapping.current = false), 150);
+    setTimeout(() => (snapping.current = false), 120);
   }
 
   // Lock vertical scroll when actively swiping horizontally
   function setTouchAction(val: "none" | "pan-y") {
     if (wrapRef.current) wrapRef.current.style.touchAction = val;
   }
-
-  // Start smooth scroll to top at 60% toward destination
-  useMotionValueEvent(x, "change", (latest) => {
-    if (!w) return;
-    const progress = Math.min(1, Math.max(0, -latest / w)); // 0..1
-    const movedAway = Math.abs(progress - active);
-    const dest: 0 | 1 = progress > active ? 1 : 0;
-    if (movedAway >= RESETTOP) {
-      if (firedForDest.current !== dest) {
-        smoothScrollToTop(600);
-        firedForDest.current = dest;
-      }
-    } else {
-      firedForDest.current = null;
-    }
-  });
 
   // Manual direction lock: decide H vs V before starting Framer's drag
   useEffect(() => {
@@ -126,7 +115,6 @@ export default function TwoPaneShell({
       startX.current = e.clientX;
       startY.current = e.clientY;
       decided.current = null;
-      firedForDest.current = null;
 
       window.addEventListener("pointermove", onPointerMove, { passive: true });
       window.addEventListener("pointerup", onPointerUp, { passive: true });
@@ -142,7 +130,7 @@ export default function TwoPaneShell({
 
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const MIN = 8;    // minimum motion to decide
+      const MIN = 8; // minimum motion to decide
       const BIAS = 1.2; // horizontal vs vertical preference
 
       if (!decided.current) {
@@ -186,14 +174,15 @@ export default function TwoPaneShell({
       style={{ touchAction: "pan-y" }}
     >
       <motion.div
-        className="flex will-change-transform"
+        className="flex transform-gpu will-change-transform"
+        initial={false}
         drag="x"
         dragControls={dragControls}
         dragListener={false} // we start drag manually (direction lock)
         dragElastic={0.12}
         dragMomentum={false}
         dragConstraints={{ left: -Math.max(w, 0), right: 0 }}
-        style={{ x }}
+        style={{ x, transform: "translateZ(0)" }}
         animate={controls}
         onDragEnd={() => {
           if (!w) return;
@@ -216,26 +205,30 @@ export default function TwoPaneShell({
       >
         {/* Strong isolation to prevent overlay bleed/flicker between panes */}
         <motion.section
-          className="min-w-full relative overflow-hidden"
+          className="min-w-full relative overflow-hidden transform-gpu"
+          initial={false}
           style={{
             contain: "layout paint",
-            clipPath: "inset(0)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden" as any,
             transform: "translateZ(0)",
+            willChange: "transform",
+            isolation: "isolate",
           }}
         >
           {left}
         </motion.section>
 
         <motion.section
-          className="min-w-full relative overflow-hidden"
+          className="min-w-full relative overflow-hidden transform-gpu"
+          initial={false}
           style={{
             contain: "layout paint",
-            clipPath: "inset(0)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden" as any,
             transform: "translateZ(0)",
+            willChange: "transform",
+            isolation: "isolate",
           }}
         >
           {right}
@@ -244,6 +237,7 @@ export default function TwoPaneShell({
     </div>
   );
 }
+
 
 
 
