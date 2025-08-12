@@ -71,33 +71,39 @@ img {
   user-select: none;
   -webkit-user-drag: none;
 }
-/* Camera button gentle pulse */
+/* Camera button gentle-but-noticeable pulse */
 .camera-pulse {
   position: relative;
-  animation: cameraPulse 2.6s ease-in-out infinite;
+  animation: cameraPulse 2.8s ease-in-out infinite;
+  will-change: transform;
 }
+
 .camera-pulse::after {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -10px;                       /* a little wider halo */
   border-radius: 9999px;
-  border: 1px solid rgba(var(--scrbl-rgb), 0.18);
+  border: 2px solid rgba(var(--scrbl-rgb), 0.25);
+  box-shadow: 0 0 24px rgba(var(--scrbl-rgb), 0.25);
   opacity: 0;
-  animation: cameraHalo 2.6s ease-in-out infinite;
+  transform: scale(0.95);
+  animation: cameraHalo 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
   pointer-events: none;
 }
 
 @keyframes cameraPulse {
   0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.02); }
-}
-@keyframes cameraHalo {
-  0% { opacity: 0; }
-  50% { opacity: 1; }
-  100% { opacity: 0; }
+  50%      { transform: scale(1.05); }   /* was 1.02 → a bit stronger */
 }
 
-/* Accessibility: turn off if user prefers less motion */
+@keyframes cameraHalo {
+  0%   { opacity: 0;   transform: scale(0.95); }
+  50%  { opacity: 0.35; transform: scale(1.08); }  /* brighter + larger */
+  100% { opacity: 0;   transform: scale(1.12); }
+}
+
+/* Accessibility: reduce motion if requested */
 @media (prefers-reduced-motion: reduce) {
   .camera-pulse, .camera-pulse::after { animation: none !important; }
 }
