@@ -8,7 +8,7 @@ function norm(s: string): string {
     .normalize("NFKC")
     .replace(/[$€£]/g, "")
     .replace(/(?<=\d),(?=\d{3}(\D|$))/g, "")
-    .replace(/\u2212/g, "-") // unicode minus
+    .replace(/\u2212/g, "-")
     .replace(/[–—−]/g, "-")
     .replace(/[×·⋅]/g, "*")
     .replace(/[÷]/g, "/")
@@ -61,11 +61,9 @@ function detectVariables(lhs: string, rhs: string): string[] {
   const lvars = new Set(parser.parse(norm(lhs)).variables());
   const rvars = new Set(parser.parse(norm(rhs)).variables());
   const all = new Set<string>([...Array.from(lvars), ...Array.from(rvars)]);
-  // Keep simple single-letter variables first (x,y,z), then others
   const letters = Array.from(all).filter((v) => /^[a-zA-Z]$/.test(v));
   const others = Array.from(all).filter((v) => !/^[a-zA-Z]$/.test(v));
   const ordered = [...letters, ...others].map((v) => v.toLowerCase());
-  // Prefer x then y then z
   ordered.sort((a, b) => {
     const p = ["x", "y", "z"];
     const ia = p.indexOf(a);
@@ -77,20 +75,12 @@ function detectVariables(lhs: string, rhs: string): string[] {
 }
 
 /** ---------- Parse candidates from final ---------- */
-/**
- * Supports:
- *  - "x=4", "x = 4 or 9", "x = 2, 3"
- *  - "x = 3 ± 2" → [5, 1]
- *  - "(x,y) = (1, 2)" or "x=1, y=2"
- * Returns a list of assignment maps: [{x:1}, {x:9}] or [{x:1,y:2}]
- */
 function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]): Record<string, number>[] {
   if (!finalVal || vars.length === 0) return [];
   const final = norm(String(finalVal));
-
   const out: Record<string, number>[] = [];
 
-  // Handle vector form: (x,y)=(1,2)
+  // (x,y)=(1,2)
   const vec = final.match(/\(\s*([a-z](?:\s*,\s*[a-z])*)\s*\)\s*=\s*\(\s*([^)]+)\)/i);
   if (vec) {
     const vnames = vec[1].split(",").map((s) => s.trim().toLowerCase());
@@ -107,7 +97,7 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     }
   }
 
-  // Collect "x=…", "y=…" pairs (tolerate commas/ors)
+  // x=..., y=...
   const pairRe = /([a-z])\s*=\s*([^,;|]+)(?=,|;|\bor\b|\band\b|$)/gi;
   let m: RegExpExecArray | null;
   const foundPairs: Record<string, string[]> = {};
@@ -115,7 +105,6 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     const v = m[1].toLowerCase();
     if (!vars.includes(v)) continue;
     const raw = m[2].trim();
-    // expand "a ± b"
     if (raw.includes("±")) {
       const [baseS, deltaS] = raw.split("±").map((t) => t.trim());
       const base = safeEval(baseS, {});
@@ -125,12 +114,10 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
         continue;
       }
     }
-    // split on or/and/commas inside the value
     const parts = raw.split(/\bor\b|,|and/gi).map((t) => t.trim()).filter(Boolean);
     (foundPairs[v] ??= []).push(...parts);
   }
 
-  // If we captured explicit pairs that cover some/all vars, create combinations
   const keys = Object.keys(foundPairs);
   if (keys.length > 0) {
     function* product(
@@ -151,11 +138,10 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     for (const a of product(0, {})) out.push(a);
   }
 
-  // Fallback: single-variable extraction when only one var exists
+  // Single var fallback
   if (out.length === 0 && vars.length === 1) {
     const v = vars[0];
     let rhs = final.includes("=") ? final.slice(final.indexOf("=") + 1) : final;
-    // expand ±
     if (rhs.includes("±")) {
       const [baseS, deltaS] = rhs.split("±").map((t) => t.trim());
       const base = safeEval(baseS, {});
@@ -164,14 +150,12 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
         out.push({ [v]: base + delta }, { [v]: base - delta });
       }
     }
-    // split on or/commas
     for (const part of rhs.split(/\bor\b|,|and/gi).map((t) => t.trim()).filter(Boolean)) {
       const n = safeEval(part, {});
       if (n !== null) out.push({ [v]: n });
     }
   }
 
-  // Deduplicate
   const uniq = new Map<string, Record<string, number>>();
   for (const asg of out) {
     const key = vars.map((v) => `${v}:${asg[v] ?? "?"}`).join("|");
@@ -180,14 +164,13 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
   return Array.from(uniq.values());
 }
 
-/** ---------- Domain checks on substituted expressions ---------- */
+/** ---------- Domain checks ---------- */
 type DomainIssue = { kind: "division-by-zero" | "sqrt-domain" | "log-domain"; where: "lhs" | "rhs"; piece?: string };
 
 function domainIssues(expr: string, vars: Record<string, number>, side: "lhs" | "rhs"): DomainIssue[] {
   const issues: DomainIssue[] = [];
   const s = norm(expr);
 
-  // sqrt(...)
   const sqrtRe = /sqrt\s*\(\s*([^)]+)\s*\)/gi;
   let m: RegExpExecArray | null;
   while ((m = sqrtRe.exec(s)) !== null) {
@@ -196,7 +179,6 @@ function domainIssues(expr: string, vars: Record<string, number>, side: "lhs" | 
     if (val === null || val < -1e-12) issues.push({ kind: "sqrt-domain", where: side, piece: arg });
   }
 
-  // log(...) / ln(...)
   const logRe = /\b(?:log|ln)\s*\(\s*([^)]+)\s*\)/gi;
   while ((m = logRe.exec(s)) !== null) {
     const arg = m[1];
@@ -204,7 +186,6 @@ function domainIssues(expr: string, vars: Record<string, number>, side: "lhs" | 
     if (val === null || val <= 0) issues.push({ kind: "log-domain", where: side, piece: arg });
   }
 
-  // crude denominator check: "/( … )" or "/x"
   const denomRe = /\/\s*(\([^()]*\)|[a-z][a-z0-9_]*)/gi;
   while ((m = denomRe.exec(s)) !== null) {
     const d = m[1];
@@ -226,22 +207,17 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
   if (!lhsS || !rhsS) return null;
 
   const vars = detectVariables(lhsS, rhsS);
-  if (vars.length === 0) vars.push("x"); // fallback
+  if (vars.length === 0) vars.push("x");
 
-  // Candidates from final
   const cand = candidatesFromFinal((result as any).final ?? null, vars);
   if (cand.length === 0) return null;
 
   const checks: Verification["checks"] = [];
 
   for (const asg of cand) {
-    // Render a friendly "x=1, y=2" label
     const label = vars.map((v) => `${v}=${asg[v] !== undefined ? asg[v] : "?"}`).join(", ");
 
-    // Domain guards before evaluating both sides
-    const domL = domainIssues(lhsS, asg, "lhs");
-    const domR = domainIssues(rhsS, asg, "rhs");
-    const dom = [...domL, ...domR];
+    const dom = [...domainIssues(lhsS, asg, "lhs"), ...domainIssues(rhsS, asg, "rhs")];
     if (dom.length) {
       checks.push({
         value: label,
@@ -253,7 +229,6 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
 
     const L = safeEval(lhsS, asg);
     const R = safeEval(rhsS, asg);
-
     if (L === null || R === null) {
       checks.push({ value: label, ok: false, reason: "invalid expression", lhs: L ?? undefined, rhs: R ?? undefined } as any);
       continue;
@@ -267,12 +242,8 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
 
   return {
     subject: "algebra",
-    method: "algebra-substitution+domain",
+    method: "algebra-substitution",
     allVerified,
     checks,
   } as Verification;
 }
-
-
-
-
