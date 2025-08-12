@@ -71,6 +71,36 @@ img {
   user-select: none;
   -webkit-user-drag: none;
 }
+/* Camera button gentle pulse */
+.camera-pulse {
+  position: relative;
+  animation: cameraPulse 2.6s ease-in-out infinite;
+}
+.camera-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 1px solid rgba(var(--scrbl-rgb), 0.18);
+  opacity: 0;
+  animation: cameraHalo 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes cameraPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+@keyframes cameraHalo {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Accessibility: turn off if user prefers less motion */
+@media (prefers-reduced-motion: reduce) {
+  .camera-pulse, .camera-pulse::after { animation: none !important; }
+}
 
 
 
