@@ -26,6 +26,7 @@ export default function Home() {
       });
       sessionStorage.setItem("scrbl:lastImage", dataUrl);
 
+      // send to classifier
       const fd = new FormData();
       fd.append("image", file);
       const r = await fetch("/api/classify", { method: "POST", body: fd });
@@ -54,18 +55,18 @@ export default function Home() {
 
   return (
     <div className="min-h-[calc(100vh-12rem)] flex flex-col items-center justify-center px-6">
-      <div className="flex flex-col items-center text-center gap-6">
+      <div className="flex flex-col items-center text-center gap-7">
         {/* Hero logo */}
         <Logo size="lg" href={null} />
 
-        {/* Bold tagline with brand arrow */}
+        {/* Bigger tagline with brand arrow */}
         <div className="max-w-sm">
-          <div className="flex items-center justify-center gap-2 text-white font-semibold text-base sm:text-lg tracking-tight">
-            <span>Snap a photo of the whiteboard</span>
+          <div className="flex items-center justify-center gap-2 text-white font-extrabold text-xl sm:text-2xl leading-tight tracking-tight">
+            <span>Snap the lecture whiteboard</span>
             <svg
               viewBox="0 0 24 24"
-              width="22"
-              height="22"
+              width="24"
+              height="24"
               className="shrink-0 text-scrbl"
               aria-hidden="true"
             >
@@ -78,15 +79,12 @@ export default function Home() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span>Receive step-by-step analysis</span>
+            <span>Solve, Explain, or Schedule</span>
           </div>
-          <p className="mt-2 text-sm text-neutral-300">
-            Make sure the writing is clear and in frame.
-          </p>
         </div>
 
         {/* Big camera button */}
-        <div className="mt-2 w-full max-w-sm flex flex-col items-center">
+        <div className="mt-1 w-full max-w-sm flex flex-col items-center">
           <button
             disabled={busy}
             onClick={() => setChooserOpen(true)}
@@ -99,7 +97,6 @@ export default function Home() {
             ].join(" ")}
             aria-label="Capture or choose a photo"
           >
-            {/* Camera icon */}
             <svg
               viewBox="0 0 24 24"
               width="64"
@@ -183,5 +180,6 @@ export default function Home() {
     </div>
   );
 }
+
 
 
