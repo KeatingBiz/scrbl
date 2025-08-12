@@ -150,8 +150,8 @@ export default function TwoPaneShell({
           // Decide: horizontal swipe → start drag, lock vertical scroll
           decided.current = "h";
           setTouchAction("none");
-          // Start Framer's drag flow from this event
-          dragControls.start(e as unknown as MouseEvent);
+          // Start Framer's drag flow from this native PointerEvent
+          dragControls.start(e as unknown as PointerEvent);
         } else if (absY > MIN && absY > absX * BIAS) {
           // Decide: vertical scroll → do not start drag; keep horizontal locked
           decided.current = "v";
