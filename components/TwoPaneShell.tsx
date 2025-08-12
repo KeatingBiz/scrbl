@@ -3,7 +3,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, useAnimation, useMotionValue, useMotionValueEvent } from "framer-motion";
+import { motion, useAnimation, useMotionValue } from "framer-motion";
 
 export default function TwoPaneShell({
   active, // 0 = Scrbl, 1 = Classes
@@ -22,7 +22,7 @@ export default function TwoPaneShell({
   const controls = useAnimation();
   const snapping = useRef(false);
 
-  const THRESHOLD = 0.4; // 40% commit (both directions)
+  const THRESHOLD = 0.4; // commit at 40% in either direction
 
   // measure width
   useEffect(() => {
@@ -32,15 +32,10 @@ export default function TwoPaneShell({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  // Lock/unlock vertical scroll: Scrbl locked; Classes scrollable
+  // lock/unlock body vertical scroll: Scrbl locked; Classes scrollable
   useEffect(() => {
     const prev = document.body.style.overflowY;
-    if (active === 0) {
-      document.body.style.overflowY = "hidden"; // Scrbl can't scroll vertically
-      window.scrollTo(0, 0); // ensure Scrbl is at top
-    } else {
-      document.body.style.overflowY = "auto";   // Classes keeps its scroll position
-    }
+    document.body.style.overflowY = active === 0 ? "hidden" : "auto";
     return () => {
       document.body.style.overflowY = prev;
     };
@@ -69,42 +64,17 @@ export default function TwoPaneShell({
       router.push(index === 0 ? "/" : "/gallery");
     }
 
-    // Only force top when landing on Scrbl; Classes keeps its scroll position
-    if (index === 0) requestAnimationFrame(() => window.scrollTo(0, 0));
-
     setTimeout(() => (snapping.current = false), 150);
   }
 
-  // Lock vertical scroll while dragging for smooth horizontal swipe
   function lockVertScroll(lock: boolean) {
     if (wrapRef.current) wrapRef.current.style.touchAction = lock ? "none" : "pan-y";
   }
 
-  // Scroll to top exactly when crossing 40% toward Scrbl (NOT toward Classes)
-  const lastCrossedDest = useRef<0 | 1 | null>(null);
-  useMotionValueEvent(x, "change", (latest) => {
-    if (!w) return;
-    const progress = Math.min(1, Math.max(0, -latest / w)); // 0..1
-    const movedAway = Math.abs(progress - active);          // distance from current pane
-    const dest: 0 | 1 = progress > active ? 1 : 0;          // which side we're moving toward
-
-    if (movedAway >= THRESHOLD) {
-      if (lastCrossedDest.current !== dest) {
-        if (dest === 0) {
-          // heading to Scrbl → make the finish look seamless
-          window.scrollTo(0, 0);
-        }
-        lastCrossedDest.current = dest;
-      }
-    } else {
-      lastCrossedDest.current = null; // re-arm when under threshold
-    }
-  });
-
   return (
     <div ref={wrapRef} className="overflow-hidden" style={{ touchAction: "pan-y" }}>
       <motion.div
-        className="flex"
+        className="flex will-change-transform"
         drag="x"
         dragElastic={0.12}
         dragMomentum={false}
@@ -135,15 +105,14 @@ export default function TwoPaneShell({
           }
         }}
       >
-        {/* Scrbl pane (vertical scrolling disabled via body lock) */}
-        <section className="min-w-full overflow-hidden">{left}</section>
-
-        {/* Classes pane (keeps its own scroll position) */}
-        <section className="min-w-full">{right}</section>
+        {/* Isolated panes so absolute overlays don't bleed across */}
+        <section className="min-w-full relative isolate overflow-hidden">{left}</section>
+        <section className="min-w-full relative isolate overflow-hidden">{right}</section>
       </motion.div>
     </div>
   );
 }
+
 
 
 
