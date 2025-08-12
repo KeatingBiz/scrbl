@@ -28,7 +28,7 @@ export default function TwoPaneShell({
   const controls = useAnimation();
   const snapping = useRef(false);
 
-  const COMMIT = 0.4;   // commit threshold (both directions)
+  const COMMIT = 0.3;   // commit threshold (both directions)
   const RESETTOP = 0.6; // start smooth scroll-to-top when you pass 60% toward destination
 
   // track if we've fired the 60% smooth-scroll for the current drag (per destination)
