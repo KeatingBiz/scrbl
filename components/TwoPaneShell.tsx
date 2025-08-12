@@ -121,7 +121,6 @@ export default function TwoPaneShell({
     if (!el) return;
 
     function onPointerDown(e: PointerEvent) {
-      // Only primary touch/pen/mouse
       if (e.isPrimary === false) return;
       pointerIdRef.current = e.pointerId;
       startX.current = e.clientX;
@@ -141,11 +140,10 @@ export default function TwoPaneShell({
       const dx = e.clientX - startX.current;
       const dy = e.clientY - startY.current;
 
-      // thresholds
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const MIN = 8;          // minimum motion to decide
-      const BIAS = 1.2;       // horizontal vs vertical preference
+      const MIN = 8;    // minimum motion to decide
+      const BIAS = 1.2; // horizontal vs vertical preference
 
       if (!decided.current) {
         if (absX > MIN && absX > absY * BIAS) {
@@ -153,8 +151,7 @@ export default function TwoPaneShell({
           decided.current = "h";
           setTouchAction("none");
           // Start Framer's drag flow from this event
-          // @ts-expect-error Framer accepts the native event here
-          dragControls.start(e);
+          dragControls.start(e as unknown as MouseEvent);
         } else if (absY > MIN && absY > absX * BIAS) {
           // Decide: vertical scroll → do not start drag; keep horizontal locked
           decided.current = "v";
@@ -247,6 +244,7 @@ export default function TwoPaneShell({
     </div>
   );
 }
+
 
 
 
