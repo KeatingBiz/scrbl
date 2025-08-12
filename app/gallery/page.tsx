@@ -25,13 +25,12 @@ function saveFolders(folders: Folder[]) {
 function chipClasses(active = false) {
   return [
     "px-3 py-1.5 rounded-full text-sm whitespace-nowrap border transition",
-    "text-white",                                // white words
-    active ? "border-scrbl bg-white/5"           // stronger outline when active
-           : "border-scrbl/50 hover:bg-white/5"  // lighter outline when idle
+    "text-white",
+    active ? "border-scrbl bg-white/5" : "border-scrbl/50 hover:bg-white/5"
   ].join(" ");
 }
 
-export default function GalleryPage() {
+export default function ClassesPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [active, setActive] = useState<string>(RECENTS_ID);
 
@@ -55,18 +54,17 @@ export default function GalleryPage() {
   const title = useMemo(() => {
     if (active === RECENTS_ID) return "Recents";
     const f = folders.find((x) => x.id === active);
-    return f?.name || "Folder";
+    return f?.name || "Class";
   }, [active, folders]);
 
-  const itemCount =
-    active === RECENTS_ID ? (recentThumb ? 1 : 0) : 0;
+  const itemCount = active === RECENTS_ID ? (recentThumb ? 1 : 0) : 0;
 
   return (
     <div className="min-h-screen p-6 flex flex-col items-center gap-6">
       {/* Page header */}
       <div className="w-full max-w-md">
         <div className="text-neutral-200 text-sm">Your</div>
-        <h1 className="text-2xl font-bold">Gallery</h1>
+        <h1 className="text-2xl font-bold">Classes</h1>
       </div>
 
       {/* Folder chips */}
