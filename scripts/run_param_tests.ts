@@ -73,13 +73,30 @@ function mkProblem({
   } as any;
 }
 
-async function runCase(c: Case) {
-  const res = await verifyBoard(c.make());
-  const ok =
-    (c.expect === "match" && res && res.allVerified) ||
-    (c.expect === "mismatch" && (!res || !res.allVerified));
-  return { ok, v: res };
+async function runCase(c: Case): Promise<{ ok: boolean; matched: boolean; v: Verification | null }> {
+  const { text, final } = c.make();
+
+  // Construct a minimal BoardUnderstanding payload for the verifier
+  const result = {
+    type: "PROBLEM_SOLVED",
+    subject_guess: null,
+    confidence: 1,
+    raw_text: text,
+    question: text,
+    given_answer: final,
+    steps: [],
+    final,
+    answer_status: "not_applicable",
+    events: [],
+  } as unknown as BoardUnderstanding;
+
+  const v = await verifyBoard(result);
+  const matched = !!(v && v.allVerified);
+  const ok = c.expect === "match" ? matched : !matched;
+
+  return { ok, matched, v: v ?? null };
 }
+
 
 type Tally = { ok: number; bad: number };
 const inc = (t: Tally, ok: boolean) => (ok ? (t.ok++, t) : (t.bad++, t));
