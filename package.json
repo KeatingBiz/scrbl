@@ -6,7 +6,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:verifier": "tsx scripts/run_param_tests.ts"
+    "test:params": "tsx scripts/run_param_tests.ts"
   },
   "dependencies": {
     "clsx": "2.1.1",
