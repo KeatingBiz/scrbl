@@ -81,6 +81,12 @@ function pv_growing_annuity(c: number, r: number, g: number, n: number): number 
   if (r === g) return c * n / (1 + r);
   return c * (1 - Math.pow((1 + g) / (1 + r), n)) / (r - g);
 }
+// CAGR
+function cagr(pv: number, fv: number, years: number): number | null {
+  if (pv <= 0 || fv <= 0 || years <= 0) return null;
+  return Math.pow(fv / pv, 1 / years) - 1;
+}
+
 
 function aprToEar(apr: number, m: number): number { return Math.pow(1 + apr / m, m) - 1; }
 function earToApr(ear: number, m: number): number { return m * (Math.pow(1 + ear, 1 / m) - 1); }
