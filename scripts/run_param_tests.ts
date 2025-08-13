@@ -800,8 +800,8 @@ function genAcctCVP(n: number): Case[] {
 // ----------------------------- Assemble all -----------------------------
 async function main() {
   // Adjust per-topic counts here
-  const N_SMALL = 40;
-  const N_MED = 60;
+  const N_SMALL = 100;
+  const N_MED = 150;
 
  const cases: Case[] = ([] as Case[])
     // Algebra (broad)
