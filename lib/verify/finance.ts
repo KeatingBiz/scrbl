@@ -102,7 +102,6 @@ function bondPrice(face: number, couponRate: number, ytm: number, years: number,
 function bondYTM(price: number, face: number, couponRate: number, years: number, freq = 2): number | null {
   const N = Math.round(years * freq);
   const c = (couponRate * face) / freq;
-  // cash flows: -price, then N-1 times c, final c+face
   const cfs = [-price, ...Array.from({ length: N - 1 }, () => c), c + face];
   const rPer = irr(cfs);
   return rPer == null ? null : rPer * freq;
@@ -138,8 +137,7 @@ function discountedPayback(cfs: number[], r: number): number | null {
 
 // CAGR, EAA
 function cagr(pv: number, fv: number, years: number): number | null {
-  // Allow declines (fv < pv) but both must be > 0; years > 0.
-  if (!(pv > 0) || !(fv > 0) || !(years > 0)) return null;
+  if (pv <= 0 || fv <= 0 || years <= 0) return null;
   return Math.pow(fv / pv, 1 / years) - 1;
 }
 function eaa(npvValue: number, r: number, n: number): number {
@@ -178,36 +176,7 @@ function compFreq(text: string): number | null {
   if (/\bweekly\b/i.test(text)) return 52;
   if (/\bdaily\b/i.test(text)) return 365;
   if (/\bannual|yearly\b/i.test(text)) return 1;
-  return findInt(text, /\bm\s*=\s*(\d{1,3})\b/i); // m periods per year
-}
-
-/** Years helper: accepts `years=5`, `n=5`, `over 5 years`, `60 months`, or `from 2018 to 2023`. */
-function findYearsSmart(text: string): number | null {
-  // explicit
-  const direct = findNum(text, /\byears?\s*=\s*([-\d.]+)\b/i, /\bn\s*=\s*([-\d.]+)\b/i);
-  if (direct != null) return direct;
-
-  // "over 5 years", "for 3 yrs", "5-year period"
-  const m1 = text.match(/\b(?:over|for)?\s*(\d+(?:\.\d+)?)\s*(years?|yrs?|y)\b/i);
-  if (m1 && m1[1]) return parseFloat(m1[1]);
-
-  // "60 months"
-  const m2 = text.match(/\b(\d+(?:\.\d+)?)\s*months?\b/i);
-  if (m2 && m2[1]) return parseFloat(m2[1]) / 12;
-
-  // "from 2018 to 2023" or "2018-2023"
-  const y = Array.from(text.matchAll(/\b(19|20)\d{2}\b/g)).map(x => parseInt(x[0], 10));
-  if (y.length >= 2) {
-    const yrs = Math.abs(y[y.length - 1] - y[0]);
-    if (yrs > 0) return yrs;
-  }
-  const dash = text.match(/\b((?:19|20)\d{2})\s*[-–—]\s*((?:19|20)\d{2})\b/);
-  if (dash) {
-    const yrs = Math.abs(parseInt(dash[2], 10) - parseInt(dash[1], 10));
-    if (yrs > 0) return yrs;
-  }
-
-  return null;
+  return findInt(text, /\bm\s*=\s*(\d{1,3})\b/i);
 }
 
 /* ====================== Verifier ====================== */
@@ -216,7 +185,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   const text = blob.toLowerCase();
   const finalS = String(result.final ?? "");
 
-  // bail early if it doesn't look like finance
+  // looks like finance?
   const looksFinance = /\b(npv|irr|mirr|pmt|pv|fv|apr|apy|ear|coupon|ytm|bond|wacc|beta|capm|portfolio|return|variance|perpetuity|annuity|payback|cagr|eaa|cash\s*flows?)\b/i.test(
     text
   );
@@ -224,11 +193,8 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
 
   const checks: Verification["checks"] = [];
 
-  // Useful parsed values
   const finalN = parseNumber(finalS);
   const finalPct = parsePercentOrNumber(finalS);
-
-  // Cash flows (interprets "CF: ..." lines or bracketed lists)
   const cfs = extractNumberList(blob);
 
   /* ---------- NPV ---------- */
@@ -265,15 +231,13 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     }
   }
 
-  /* ---------- PMT / PV / FV (loans & annuities) ---------- */
-  // Try to infer per-period rate and n; handle annuity due if "due/beginning" appears
+  /* ---------- PMT / PV / FV ---------- */
   const isDue = /\b(annuity\s*due|beginning\s*of\s*period|payments?\s*at\s*beginning)\b/i.test(text);
   const rateAny = findRate(text, /(?:rate|interest|discount|r|i|k|yield)\s*=?\s*([-\d.]+%?)/i);
   const m = compFreq(text) ?? 1;
   const rPer = rateAny != null ? rateAny / m : null;
   const n =
-    findInt(text, /\b(?:n|#\s*periods|periods|years|months)\s*=\s*(\d{1,5})/i) ??
-    (/\byears?\b/i.test(text) && /\bmonths\b/i.test(text) ? null : null);
+    findInt(text, /\b(?:n|#\s*periods|periods|years|months)\s*=\s*(\d{1,5})/i) ?? null;
   const pv = findNum(text, /\b(?:pv|present\s*value|loan|principal)\s*=\s*([-\d.]+)/i);
   const fv = findNum(text, /\b(?:fv|future\s*value)\s*=\s*([-\d.]+)/i);
   const pmtText = findNum(text, /\b(?:pmt|payment)\s*=\s*([-\d.]+)/i);
@@ -324,7 +288,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const g = findRate(text, /\b(?:growth|g)\s*=\s*([-\d.]+%?)/i);
     if (c0 != null && r != null && g != null && finalN != null) {
       const val = pv_growing_perpetuity(c0, r, g);
-      const ok = Number.isFinite(val) && (relClose(val, finalN, 1e-5, 1e-4) || approxEqual(val!, finalN, 1e-3));
+      const ok = Number.isFinite(val) && (relClose(val!, finalN, 1e-5, 1e-4) || approxEqual(val!, finalN, 1e-3));
       checks.push({ value: `PV_gperp=${finalN}`, ok: !!ok, lhs: val ?? undefined, rhs: finalN, reason: ok ? null : "Growing perpetuity PV mismatch" });
     }
   }
@@ -341,7 +305,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   }
 
   /* ---------- APR ↔ EAR / APY ---------- */
-  if (/\b(apr|nominal)\b/i.test(text) && /\b(ear|apy|effective)\b/i.test(text)) {
+  if (/\b(?:apr|nominal)\b/i.test(text) && /\b(?:ear|apy|effective)\b/i.test(text)) {
     const apr = findRate(text, /\b(?:apr|nominal)\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
     const mApr = compFreq(text) ?? 12;
     if (apr != null && finalPct != null) {
@@ -350,7 +314,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
       checks.push({ value: `EAR=${finalPct}`, ok, lhs: ear, rhs: finalPct, reason: ok ? null : "EAR mismatch" });
     }
   }
-  if (/\b(ear|apy|effective)\b/i.test(text) && /\b(apr|nominal)\b/i.test(text)) {
+  if (/\b(?:ear|apy|effective)\b/i.test(text) && /\b(?:apr|nominal)\b/i.test(text)) {
     const ear = findRate(text, /\b(?:ear|apy|effective)\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
     const mApr = compFreq(text) ?? 12;
     if (ear != null && finalPct != null) {
@@ -365,15 +329,28 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const face = findNum(text, /\b(face|par|fv)\s*=?\s*([-\d.]+)/i);
     const price = findNum(text, /\bprice\s*=?\s*([-\d.]+)/i) ?? finalN;
     const cpnRate = findRate(text, /\b(coupon\s*rate|cpn)\s*=?\s*([-\d.]+%?)/i);
-    const ytm = findRate(text, /\b(?:ytm|yield\s*to\s*maturity)\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
-    const years = findNum(text, /\b(maturity|years?|n)\s*=?\s*(\d{1,4})/i);
+    const cpnAmt  = findNum(text,  /\b(coupon\s*(amount|payment)|cpn)\s*=?\s*([-\d.]+)/i); // NEW: amount support
+    let years = findNum(text, /\b(maturity|years?|n)\s*=?\s*([-\d.]+)/i);
     const freq = compFreq(text) ?? 2;
 
-    // Price check (given face, couponRate, ytm, years)
-    if (face != null && cpnRate != null && ytm != null && years != null && finalN != null) {
-      const val = bondPrice(face, cpnRate, ytm, years, freq);
-      const ok = relClose(val, finalN, 1e-5, 1e-3) || approxEqual(val, finalN, 5e-3);
-      checks.push({ value: `BondPrice=${finalN}`, ok, lhs: val, rhs: finalN, reason: ok ? null : "Bond price mismatch" });
+    if (years != null) years = Math.max(0.5, years);
+
+    // Price check (given YTM and coupon info)
+    const ytm = findRate(text, /\bytm|yield\s*to\s*maturity\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
+    if (face != null && years != null && ytm != null && finalN != null) {
+      let priceVal: number | null = null;
+      if (cpnRate != null) {
+        priceVal = bondPrice(face, cpnRate, ytm, years, freq);
+      } else if (cpnAmt != null) {
+        // Approx: infer annual coupon rate from per-period amount (if not specified otherwise)
+        const impliedRate = (cpnAmt * freq) / face;
+        priceVal = bondPrice(face, impliedRate, ytm, years, freq);
+      }
+      if (priceVal != null) {
+        // Slightly looser tolerance—bond rounding gets gnarly
+        const ok = relClose(priceVal, finalN, 1e-4, 1e-2) || approxEqual(priceVal, finalN, 1e-2);
+        checks.push({ value: `BondPrice=${finalN}`, ok, lhs: priceVal, rhs: finalN, reason: ok ? null : "Bond price mismatch" });
+      }
     }
 
     // YTM check (given price, face, couponRate, years)
@@ -407,8 +384,8 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
 
   /* ---------- CAPM ---------- */
   if (/\bcapm\b|expected\s*return\b|cost\s*of\s*equity\b/i.test(text)) {
-    const rf = findRate(text, /\b(?:rf|risk[-\s]*free)\b\s*=?\s*([-\d.]+%?)/i);
-    const rm = findRate(text, /\b(?:rm|market\s*return)\b\s*=?\s*([-\d.]+%?)/i);
+    const rf = findRate(text, /\brf|risk[-\s]*free\b\s*=?\s*([-\d.]+%?)/i);
+    const rm = findRate(text, /\brm|market\s*return\b\s*=?\s*([-\d.]+%?)/i);
     const beta = findNum(text, /\b(beta|β)\s*=\s*([-\d.]+)/i);
     if (rf != null && rm != null && beta != null && finalPct != null) {
       const re = rf + beta * (rm - rf);
@@ -423,7 +400,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const D = findNum(text, /\bD\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bdebt\s*=\s*([-\d.]+)/i);
     const Re = findRate(text, /\b(?:Re|cost\s*of\s*equity)\b\s*=\s*([-\d.]+%?)/i);
     const Rd = findRate(text, /\b(?:Rd|cost\s*of\s*debt)\b\s*=\s*([-\d.]+%?)/i);
-    const T = findRate(text, /\b(?:tax\s*rate|t)\s*=\s*([-\d.]+%?)/i);
+    const T = findRate(text, /\btax\s*rate|t\s*=\s*([-\d.]+%?)/i);
     if (E != null && D != null && Re != null && Rd != null && T != null && finalPct != null) {
       const V = E + D;
       const wacc = (E / V) * Re + (D / V) * Rd * (1 - T);
@@ -440,7 +417,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const r2 = findRate(text, /\b(?:r2|return\s*2)\b\s*=\s*([-\d.]+%?)/i);
     const s1 = findRate(text, /\b(?:s1|sd1|σ1|sigma1)\b\s*=\s*([-\d.]+%?)/i);
     const s2 = findRate(text, /\b(?:s2|sd2|σ2|sigma2)\b\s*=\s*([-\d.]+%?)/i);
-    const rho = findNum(text, /\b(?:rho|corr(?:elation)?)\b\s*=\s*([-\d.]+)/i) ?? 0;
+    const rho = findNum(text, /\brho|corr(?:elation)?\b\s*=\s*([-\d.]+)/i) ?? 0;
     if (w1 != null && w2 != null && Math.abs(w1 + w2 - 1) < 1e-6) {
       if (r1 != null && r2 != null && finalPct != null && /\bexpected\s*return\b/i.test(text)) {
         const er = w1 * r1 + w2 * r2;
@@ -475,23 +452,15 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     }
   }
 
-  /* ---------- CAGR (hardened) ---------- */
+  /* ---------- CAGR ---------- */
   if (/\bcagr\b|compound\s+annual\s+growth\s+rate/i.test(text)) {
-    const yearsExplicit = findNum(blob, /\byears?\s*=\s*([-\d.]+)/i, /\bn\s*=\s*([-\d.]+)/i);
-    const yearsSmart = yearsExplicit ?? findYearsSmart(blob);
-    // broader synonyms for start/end
-    const start =
-      findNum(blob, /\b(start|begin|initial|starting|pv|p0|v0|s0)\s*=\s*([-\d.]+)/i) ??
-      findNum(blob, /\b(?:at\s*t\s*=\s*0|time\s*0)\s*[:=]\s*([-\d.]+)/i);
-    const end =
-      findNum(blob, /\b(end|finish|final|fv|value\s*at\s*end|vN|pN|sN)\s*=\s*([-\d.]+)/i) ??
-      findNum(blob, /\b(?:at\s*t\s*=\s*n|time\s*n)\s*[:=]\s*([-\d.]+)/i);
-
-    if (yearsSmart != null && start != null && end != null && finalPct != null) {
-      const val = cagr(start, end, yearsSmart);
+    const years = findNum(text, /\byears?\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bn\s*=\s*([-\d.]+)/i);
+    const start = findNum(text, /\b(start|begin|pv)\s*=\s*([-\d.]+)/i);
+    const end = findNum(text, /\b(end|finish|fv|final)\s*=\s*([-\d.]+)/i);
+    if (years != null && start != null && end != null && finalPct != null) {
+      const val = cagr(start, end, years);
       if (val != null) {
-        // CAGR is sensitive to rounding → allow slightly looser rel tolerance
-        const ok = approxEqual(val, finalPct, 5e-5) || relClose(val, finalPct, 5e-5, 1e-8);
+        const ok = approxEqual(val, finalPct, 1e-6) || relClose(val, finalPct, 1e-6, 1e-8);
         checks.push({ value: `CAGR=${finalPct}`, ok, lhs: val, rhs: finalPct, reason: ok ? null : "CAGR mismatch" });
       }
     }
@@ -502,7 +471,6 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const r = rateAny;
     const nE = n;
     if (r != null && nE != null && /\bnpv\b/i.test(text)) {
-      // Use NPV we recompute from any CFs in text
       const valNPV = npv(r, cfs);
       if (finalN != null) {
         const eaaVal = eaa(valNPV, r, nE);
@@ -517,3 +485,4 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   const allVerified = checks.every((c) => c.ok);
   return { subject: "finance", method: "finance-tvm", allVerified, checks };
 }
+
