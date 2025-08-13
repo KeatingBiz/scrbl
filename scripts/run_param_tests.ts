@@ -23,8 +23,8 @@ const round = (x: number, k = 4) => Math.round(x * 10 ** k) / 10 ** k;
 
 type Case = {
   topic: string;
-  make: () => BoardUnderstanding; // built with final answer inside
   expect: "match" | "mismatch";
+  make: () => { text: string; final: string } | BoardUnderstanding;
 };
 
 function mkProblem({
@@ -74,10 +74,14 @@ function mkProblem({
 }
 
 async function runCase(c: Case): Promise<{ ok: boolean; matched: boolean; v: Verification | null }> {
-  const { text, final } = c.make();
+  const made = c.make() as any;
 
-  // Construct a minimal BoardUnderstanding payload for the verifier
-  const result = {
+  // Accept either the simple generator shape ({text, final}) or a BoardUnderstanding-like object
+  const text: string = String(made.text ?? made.question ?? made.raw_text ?? "");
+  const final: string = String(made.final ?? "");
+
+  // Construct a minimal payload for the verifier
+  const result: BoardUnderstanding = {
     type: "PROBLEM_SOLVED",
     subject_guess: null,
     confidence: 1,
@@ -88,7 +92,7 @@ async function runCase(c: Case): Promise<{ ok: boolean; matched: boolean; v: Ver
     final,
     answer_status: "not_applicable",
     events: [],
-  } as unknown as BoardUnderstanding;
+  } as BoardUnderstanding;
 
   const v = await verifyBoard(result);
   const matched = !!(v && v.allVerified);
