@@ -782,7 +782,7 @@ async function main() {
   const N_SMALL = 40;
   const N_MED = 60;
 
-  const cases: Case[] = []
+ const cases: Case[] = ([] as Case[])
     // Algebra (broad)
     .concat(genAlgebraLinear(N_MED))
     .concat(genAlgebraQuadratic(N_MED))
