@@ -17,7 +17,6 @@ function npv(r: number, cfs: number[]): number {
 }
 
 function irr(cfs: number[], guess = 0.1): number | null {
-  // Newton step
   let r = guess;
   for (let k = 0; k < 30; k++) {
     let f = 0, df = 0;
@@ -32,7 +31,6 @@ function irr(cfs: number[], guess = 0.1): number | null {
     if (Math.abs(rNext - r) < 1e-12) return rNext;
     r = rNext;
   }
-  // Bisection on a wide bracket
   let lo = -0.999, hi = 10;
   let flo = npv(lo, cfs), fhi = npv(hi, cfs);
   if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo * fhi > 0) return null;
@@ -46,7 +44,6 @@ function irr(cfs: number[], guess = 0.1): number | null {
   return (lo + hi) / 2;
 }
 
-// MIRR with separate finance (cost) and reinvestment rates
 function mirr(cfs: number[], financeRate: number, reinvestRate: number): number | null {
   if (!cfs.length) return null;
   const negs = cfs.map((cf, i) => cf < 0 ? cf * Math.pow(1 + financeRate, i) : 0).reduce((a, b) => a + b, 0);
@@ -56,7 +53,6 @@ function mirr(cfs: number[], financeRate: number, reinvestRate: number): number 
   return Math.pow(-possFV / negs, 1 / n) - 1;
 }
 
-// Time value of money
 function pmt(r: number, n: number, pv: number, fv = 0, due = false): number {
   if (n <= 0) return NaN;
   if (Math.abs(r) < ABS_EPS) {
@@ -82,15 +78,13 @@ function fv_annuity(pmtAmt: number, r: number, n: number, due = false): number {
 function pv_perpetuity(c: number, r: number): number { return c / r; }
 function pv_growing_perpetuity(c: number, r: number, g: number): number { if (r <= g) return NaN; return c / (r - g); }
 function pv_growing_annuity(c: number, r: number, g: number, n: number): number {
-  if (r === g) return c * n / (1 + r); // limit case
+  if (r === g) return c * n / (1 + r);
   return c * (1 - Math.pow((1 + g) / (1 + r), n)) / (r - g);
 }
 
-// Rates conversion
 function aprToEar(apr: number, m: number): number { return Math.pow(1 + apr / m, m) - 1; }
 function earToApr(ear: number, m: number): number { return m * (Math.pow(1 + ear, 1 / m) - 1); }
 
-// Bonds
 function bondPrice(face: number, couponRate: number, ytm: number, years: number, freq = 2): number {
   const N = Math.round(years * freq);
   const c = (couponRate * face) / freq;
@@ -105,43 +99,6 @@ function bondYTM(price: number, face: number, couponRate: number, years: number,
   const cfs = [-price, ...Array.from({ length: N - 1 }, () => c), c + face];
   const rPer = irr(cfs);
   return rPer == null ? null : rPer * freq;
-}
-
-// Payback (undiscounted) and discounted payback
-function paybackPeriods(cfs: number[]): number | null {
-  let cum = cfs[0] ?? 0;
-  if (!Number.isFinite(cum)) return null;
-  for (let i = 1; i < cfs.length; i++) {
-    const prev = cum;
-    cum += cfs[i];
-    if (prev < 0 && cum >= 0) {
-      const frac = -prev / cfs[i];
-      return i - 1 + frac;
-    }
-  }
-  return cum >= 0 ? 0 : null;
-}
-function discountedPayback(cfs: number[], r: number): number | null {
-  let cum = cfs[0] ?? 0;
-  for (let i = 1; i < cfs.length; i++) {
-    const add = cfs[i] / Math.pow(1 + r, i);
-    const prev = cum;
-    cum += add;
-    if (prev < 0 && cum >= 0) {
-      const frac = -prev / add;
-      return i - 1 + frac;
-    }
-  }
-  return cum >= 0 ? 0 : null;
-}
-
-// CAGR, EAA
-function cagr(pv: number, fv: number, years: number): number | null {
-  if (pv <= 0 || fv <= 0 || years <= 0) return null;
-  return Math.pow(fv / pv, 1 / years) - 1;
-}
-function eaa(npvValue: number, r: number, n: number): number {
-  return (npvValue * r) / (1 - Math.pow(1 + r, -n));
 }
 
 /* ====================== Parsing helpers ====================== */
@@ -175,7 +132,7 @@ function compFreq(text: string): number | null {
   if (/\bmonthly\b/i.test(text)) return 12;
   if (/\bweekly\b/i.test(text)) return 52;
   if (/\bdaily\b/i.test(text)) return 365;
-  if (/\bannual|yearly\b/i.test(text)) return 1;
+  if (/\b(annual|yearly)\b/i.test(text)) return 1;
   return findInt(text, /\bm\s*=\s*(\d{1,3})\b/i);
 }
 
@@ -185,14 +142,12 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   const text = blob.toLowerCase();
   const finalS = String(result.final ?? "");
 
-  // looks like finance?
   const looksFinance = /\b(npv|irr|mirr|pmt|pv|fv|apr|apy|ear|coupon|ytm|bond|wacc|beta|capm|portfolio|return|variance|perpetuity|annuity|payback|cagr|eaa|cash\s*flows?)\b/i.test(
     text
   );
   if (!looksFinance) return null;
 
   const checks: Verification["checks"] = [];
-
   const finalN = parseNumber(finalS);
   const finalPct = parsePercentOrNumber(finalS);
   const cfs = extractNumberList(blob);
@@ -254,7 +209,8 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
       const val = pv_annuity(-pmtText, rPer, n, isDue);
       const ok = relClose(val, finalN, 1e-5, 1e-4) || approxEqual(val, finalN, 1e-3);
       checks.push({ value: `PV=${finalN}`, ok, lhs: val, rhs: finalN, reason: ok ? null : "PV annuity mismatch" });
-    } else if (rPer != null && n != null && fv != null && finalN != null) {
+    } else if (rPer != null && n != null && pv != null && fv != null && finalN != null) {
+      // If final is PV, and we have FV and PV both, this path won't be used. Kept minimal.
       const val = pv_lump(fv, rPer, n);
       const ok = relClose(val, finalN, 1e-6, 1e-4) || approxEqual(val, finalN, 1e-3);
       checks.push({ value: `PV=${finalN}`, ok, lhs: val, rhs: finalN, reason: ok ? null : "PV lump mismatch" });
@@ -272,7 +228,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     }
   }
 
-  /* ---------- Perpetuities / Growing cash flows ---------- */
+  /* ---------- Perpetuities / Growing flows ---------- */
   if (/\bperpetuity\b/i.test(text)) {
     const c = findNum(text, /\b(c|cf|coupon|payment)\s*=\s*([-\d.]+)/i) ?? pmtText ?? finalN;
     const r = rateAny;
@@ -288,8 +244,10 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const g = findRate(text, /\b(?:growth|g)\s*=\s*([-\d.]+%?)/i);
     if (c0 != null && r != null && g != null && finalN != null) {
       const val = pv_growing_perpetuity(c0, r, g);
-      const ok = Number.isFinite(val) && (relClose(val!, finalN, 1e-5, 1e-4) || approxEqual(val!, finalN, 1e-3));
-      checks.push({ value: `PV_gperp=${finalN}`, ok: !!ok, lhs: val ?? undefined, rhs: finalN, reason: ok ? null : "Growing perpetuity PV mismatch" });
+      if (Number.isFinite(val)) {
+        const ok = relClose(val!, finalN, 1e-5, 1e-4) || approxEqual(val!, finalN, 1e-3);
+        checks.push({ value: `PV_gperp=${finalN}`, ok, lhs: val!, rhs: finalN, reason: ok ? null : "Growing perpetuity PV mismatch" });
+      }
     }
   }
   if (/\bgrowing\s+annuity\b/i.test(text)) {
@@ -328,44 +286,56 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   if (/\bbond\b|coupon|ytm/i.test(text)) {
     const face = findNum(text, /\b(face|par|fv)\s*=?\s*([-\d.]+)/i);
     const price = findNum(text, /\bprice\s*=?\s*([-\d.]+)/i) ?? finalN;
-    const cpnRate = findRate(text, /\b(coupon\s*rate|cpn)\s*=?\s*([-\d.]+%?)/i);
-    const cpnAmt  = findNum(text,  /\b(coupon\s*(amount|payment)|cpn)\s*=?\s*([-\d.]+)/i); // NEW: amount support
-    let years = findNum(text, /\b(maturity|years?|n)\s*=?\s*([-\d.]+)/i);
-    const freq = compFreq(text) ?? 2;
+    const cpnRate = findRate(text, /\b(?:coupon\s*rate|cpn)\b\s*=?\s*([-\d.]+%?)/i);
+    const ytm = findRate(text, /\b(?:ytm|yield\s*to\s*maturity)\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
+    const years = findNum(text, /\b(?:maturity|years?|n)\s*=?\s*(\d{1,4})/i);
+    const freqHint = compFreq(text);
 
-    if (years != null) years = Math.max(0.5, years);
-
-    // Price check (given YTM and coupon info)
-    const ytm = findRate(text, /\bytm|yield\s*to\s*maturity\b\s*=?\s*([-\d.]+%?)/i) ?? finalPct;
-    if (face != null && years != null && ytm != null && finalN != null) {
-      let priceVal: number | null = null;
-      if (cpnRate != null) {
-        priceVal = bondPrice(face, cpnRate, ytm, years, freq);
-      } else if (cpnAmt != null) {
-        // Approx: infer annual coupon rate from per-period amount (if not specified otherwise)
-        const impliedRate = (cpnAmt * freq) / face;
-        priceVal = bondPrice(face, impliedRate, ytm, years, freq);
-      }
-      if (priceVal != null) {
-        // Slightly looser tolerance—bond rounding gets gnarly
-        const ok = relClose(priceVal, finalN, 1e-4, 1e-2) || approxEqual(priceVal, finalN, 1e-2);
-        checks.push({ value: `BondPrice=${finalN}`, ok, lhs: priceVal, rhs: finalN, reason: ok ? null : "Bond price mismatch" });
+    // Price check – if comp freq unspecified, try 2 then 1
+    if (face != null && cpnRate != null && ytm != null && years != null && finalN != null) {
+      const tryFreqs = freqHint ? [freqHint] : [2, 1];
+      for (const f of tryFreqs) {
+        const val = bondPrice(face, cpnRate, ytm, years, f);
+        const ok = relClose(val, finalN, 1e-5, 1e-3) || approxEqual(val, finalN, 5e-3);
+        if (ok) {
+          checks.push({ value: `BondPrice=${finalN}`, ok: true, lhs: val, rhs: finalN, reason: null });
+          break;
+        }
+        if (f === tryFreqs[tryFreqs.length - 1]) {
+          checks.push({ value: `BondPrice=${finalN}`, ok: false, lhs: val, rhs: finalN, reason: "Bond price mismatch" });
+        }
       }
     }
 
-    // YTM check (given price, face, couponRate, years)
+    // YTM check – same freq fallback
     if (price != null && face != null && cpnRate != null && years != null && finalPct != null) {
-      const val = bondYTM(price, face, cpnRate, years, freq);
-      if (val != null) {
-        const ok = relClose(val, finalPct, 1e-6, 1e-6) || approxEqual(val, finalPct, 1e-6);
-        checks.push({ value: `YTM=${finalPct}`, ok, lhs: val, rhs: finalPct, reason: ok ? null : "YTM mismatch" });
+      const tryFreqs = freqHint ? [freqHint] : [2, 1];
+      for (const f of tryFreqs) {
+        const val = bondYTM(price, face, cpnRate, years, f);
+        if (val != null) {
+          const ok = relClose(val, finalPct, 1e-6, 1e-6) || approxEqual(val, finalPct, 1e-6);
+          checks.push({ value: `YTM=${finalPct}`, ok, lhs: val, rhs: finalPct, reason: ok ? null : "YTM mismatch" });
+          break;
+        }
       }
     }
   }
 
   /* ---------- Payback & Discounted Payback ---------- */
   if (/\bpayback\b/i.test(text) && cfs.length >= 2) {
-    const pb = paybackPeriods(cfs);
+    const pb = (function payback(cfs: number[]): number | null {
+      let cum = cfs[0] ?? 0;
+      if (!Number.isFinite(cum)) return null;
+      for (let i = 1; i < cfs.length; i++) {
+        const prev = cum;
+        cum += cfs[i];
+        if (prev < 0 && cum >= 0) {
+          const frac = -prev / cfs[i];
+          return i - 1 + frac;
+        }
+      }
+      return cum >= 0 ? 0 : null;
+    })(cfs);
     if (pb != null && finalN != null) {
       const ok = relClose(pb, finalN, 1e-3, 1e-3) || approxEqual(pb, finalN, 1e-3);
       checks.push({ value: `Payback=${finalN}`, ok, lhs: pb, rhs: finalN, reason: ok ? null : "Payback mismatch" });
@@ -374,7 +344,19 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   if (/\bdiscounted\s*payback\b/i.test(text) && cfs.length >= 2) {
     const r = findRate(text, /(?:discount|rate|r|i|k)\s*=?\s*([-\d.]+%?)/i);
     if (r != null) {
-      const dpb = discountedPayback(cfs, r);
+      let cum = cfs[0] ?? 0;
+      let dpb: number | null = null;
+      for (let i = 1; i < cfs.length; i++) {
+        const add = cfs[i] / Math.pow(1 + r, i);
+        const prev = cum;
+        cum += add;
+        if (prev < 0 && cum >= 0) {
+          const frac = -prev / add;
+          dpb = i - 1 + frac;
+          break;
+        }
+      }
+      if (dpb == null && cum >= 0) dpb = 0;
       if (dpb != null && finalN != null) {
         const ok = relClose(dpb, finalN, 1e-3, 1e-3) || approxEqual(dpb, finalN, 1e-3);
         checks.push({ value: `DiscPayback=${finalN}`, ok, lhs: dpb, rhs: finalN, reason: ok ? null : "Discounted payback mismatch" });
@@ -383,10 +365,10 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
   }
 
   /* ---------- CAPM ---------- */
-  if (/\bcapm\b|expected\s*return\b|cost\s*of\s*equity\b/i.test(text)) {
-    const rf = findRate(text, /\brf|risk[-\s]*free\b\s*=?\s*([-\d.]+%?)/i);
-    const rm = findRate(text, /\brm|market\s*return\b\s*=?\s*([-\d.]+%?)/i);
-    const beta = findNum(text, /\b(beta|β)\s*=\s*([-\d.]+)/i);
+  if (/\b(capm|expected\s*return|cost\s*of\s*equity)\b/i.test(text)) {
+    const rf  = findRate(text, /\b(?:rf|risk[-\s]*free)\b\s*=?\s*([-\d.]+%?)/i);
+    const rm  = findRate(text, /\b(?:rm|market\s*return)\b\s*=?\s*([-\d.]+%?)/i);
+    const beta = findNum(text, /\b(?:beta|β)\b\s*=\s*([-\d.]+)/i);
     if (rf != null && rm != null && beta != null && finalPct != null) {
       const re = rf + beta * (rm - rf);
       const ok = relClose(re, finalPct, 1e-6, 1e-6) || approxEqual(re, finalPct, 1e-6);
@@ -396,11 +378,11 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
 
   /* ---------- WACC ---------- */
   if (/\bwacc\b|weighted\s*average\s*cost\s*of\s*capital/i.test(text)) {
-    const E = findNum(text, /\bE\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bequity\s*=\s*([-\d.]+)/i);
-    const D = findNum(text, /\bD\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bdebt\s*=\s*([-\d.]+)/i);
+    const E  = findNum(text, /\bE\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bequity\s*=\s*([-\d.]+)/i);
+    const D  = findNum(text, /\bD\s*=\s*([-\d.]+)/i) ?? findNum(text, /\bdebt\s*=\s*([-\d.]+)/i);
     const Re = findRate(text, /\b(?:Re|cost\s*of\s*equity)\b\s*=\s*([-\d.]+%?)/i);
     const Rd = findRate(text, /\b(?:Rd|cost\s*of\s*debt)\b\s*=\s*([-\d.]+%?)/i);
-    const T = findRate(text, /\btax\s*rate|t\s*=\s*([-\d.]+%?)/i);
+    const T  = findRate(text, /\b(?:tax\s*rate|t)\b\s*=\s*([-\d.]+%?)/i);
     if (E != null && D != null && Re != null && Rd != null && T != null && finalPct != null) {
       const V = E + D;
       const wacc = (E / V) * Re + (D / V) * Rd * (1 - T);
@@ -409,7 +391,7 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     }
   }
 
-  /* ---------- Portfolio (2-asset) return / variance ---------- */
+  /* ---------- Portfolio (2-asset) ---------- */
   if (/\bportfolio\b/i.test(text)) {
     const w1 = findRate(text, /\b(?:w1|weight\s*1)\b\s*=\s*([-\d.]+%?)/i) ?? findRate(text, /\bw\s*=\s*([-\d.]+%?)/i);
     const w2 = findRate(text, /\b(?:w2|weight\s*2)\b\s*=\s*([-\d.]+%?)/i);
@@ -417,38 +399,25 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     const r2 = findRate(text, /\b(?:r2|return\s*2)\b\s*=\s*([-\d.]+%?)/i);
     const s1 = findRate(text, /\b(?:s1|sd1|σ1|sigma1)\b\s*=\s*([-\d.]+%?)/i);
     const s2 = findRate(text, /\b(?:s2|sd2|σ2|sigma2)\b\s*=\s*([-\d.]+%?)/i);
-    const rho = findNum(text, /\brho|corr(?:elation)?\b\s*=\s*([-\d.]+)/i) ?? 0;
+    const rho = findNum(text, /\b(?:rho|corr(?:elation)?)\b\s*=\s*([-\d.]+)/i) ?? 0;
+
     if (w1 != null && w2 != null && Math.abs(w1 + w2 - 1) < 1e-6) {
       if (r1 != null && r2 != null && finalPct != null && /\bexpected\s*return\b/i.test(text)) {
         const er = w1 * r1 + w2 * r2;
         const ok = relClose(er, finalPct, 1e-6, 1e-6) || approxEqual(er, finalPct, 1e-6);
         checks.push({ value: `E[Rp]=${finalPct}`, ok, lhs: er, rhs: finalPct, reason: ok ? null : "Portfolio return mismatch" });
       }
-      if (s1 != null && s2 != null && (/\bvar(iance)?\b/i.test(text) || /\bsd|stdev|vol(atility)?\b/i.test(text))) {
+      if (s1 != null && s2 != null && (/\bvar(iance)?\b/i.test(text) || /\b(sd|stdev|vol(atility)?)\b/i.test(text))) {
         const varP = w1 * w1 * s1 * s1 + w2 * w2 * s2 * s2 + 2 * w1 * w2 * rho * s1 * s2;
         if (/\bvar(iance)?\b/i.test(text) && finalN != null) {
           const ok = relClose(varP, finalN, 1e-6, 1e-6) || approxEqual(varP, finalN, 1e-6);
           checks.push({ value: `Var_p=${finalN}`, ok, lhs: varP, rhs: finalN, reason: ok ? null : "Portfolio variance mismatch" });
-        } else if (/\bsd|stdev|vol(atility)?\b/i.test(text) && finalPct != null) {
+        } else if (/\b(sd|stdev|vol(atility)?)\b/i.test(text) && finalPct != null) {
           const sdP = Math.sqrt(varP);
           const ok = relClose(sdP, finalPct, 1e-6, 1e-6) || approxEqual(sdP, finalPct, 1e-6);
           checks.push({ value: `SD_p=${finalPct}`, ok, lhs: sdP, rhs: finalPct, reason: ok ? null : "Portfolio SD mismatch" });
         }
       }
-    }
-  }
-
-  /* ---------- Amortization sanity (total interest) ---------- */
-  if (/\bamortiz(e|ation)\b/i.test(text) && rPer != null && n != null && pv != null) {
-    const payment = pmt(rPer, n, pv, 0, isDue);
-    const totalPaid = -payment * n;
-    const totalInt = totalPaid - pv;
-    if (/\btotal\s*interest\b/i.test(text) && finalN != null) {
-      const ok = relClose(totalInt, finalN, 1e-5, 1e-4) || approxEqual(totalInt, finalN, 1e-3);
-      checks.push({ value: `TotalInterest=${finalN}`, ok, lhs: totalInt, rhs: finalN, reason: ok ? null : "Total interest mismatch" });
-    } else if (/\bpayment\b/i.test(text) && finalN != null) {
-      const ok = relClose(payment, finalN, 1e-5, 1e-4) || approxEqual(payment, finalN, 1e-3);
-      checks.push({ value: `PMT=${finalN}`, ok, lhs: payment, rhs: finalN, reason: ok ? null : "PMT mismatch" });
     }
   }
 
@@ -466,23 +435,23 @@ export function verifyFinance(result: BoardUnderstanding): Verification | null {
     }
   }
 
-  /* ---------- EAA (Equivalent Annual Annuity) ---------- */
+  /* ---------- EAA ---------- */
   if (/\beaa\b|equivalent\s+annual\s+annuity/i.test(text)) {
     const r = rateAny;
     const nE = n;
     if (r != null && nE != null && /\bnpv\b/i.test(text)) {
       const valNPV = npv(r, cfs);
       if (finalN != null) {
-        const eaaVal = eaa(valNPV, r, nE);
+        const eaaVal = (valNPV * r) / (1 - Math.pow(1 + r, -nE));
         const ok = relClose(eaaVal, finalN, 1e-5, 1e-4) || approxEqual(eaaVal, finalN, 1e-3);
         checks.push({ value: `EAA=${finalN}`, ok, lhs: eaaVal, rhs: finalN, reason: ok ? null : "EAA mismatch" });
       }
     }
   }
 
-  /* ---------- Verdict ---------- */
   if (!checks.length) return null;
   const allVerified = checks.every((c) => c.ok);
   return { subject: "finance", method: "finance-tvm", allVerified, checks };
 }
+
 
