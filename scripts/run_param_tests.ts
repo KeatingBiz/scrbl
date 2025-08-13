@@ -714,23 +714,28 @@ function genAcctNetIncome(n: number): Case[] {
     const sales = irnd(8000, 30000);
     const cogs = irnd(3000, Math.max(4000, sales - 2000));
     const sga = irnd(500, 4000);
-    const rnd = irnd(0, 2000);
+    const rAndD = irnd(0, 2000);     // <- renamed (was `rnd`)
     const dep = irnd(0, 1500);
     const interest = irnd(0, 1200);
-    const taxRate = rnd(0.1, 0.35);
+    const taxRate = rnd(0.1, 0.35);  // <- keep using helper `rnd(a,b)`
 
     const gp = sales - cogs;
-    const opx = sga + rnd + dep;
+    const opx = sga + rAndD + dep;
     const ebit = gp - opx;
     const ebt = ebit - interest;
     const tax = ebt * taxRate;
     const ni = round(ebt - tax, 2);
     const wrong = round(ni + pick([40, -55, 80]), 2);
 
-    const text = `Income statement items:\nNet sales=$${sales}\nCOGS=$${cogs}\nSelling expenses=$${sga}\nResearch & development=$${rnd}\nDepreciation expense=$${dep}\nInterest expense=$${interest}\nTax rate=${round(
-      taxRate * 100,
-      6
-    )}%\nCompute net income.`;
+    const text = `Income statement items:
+Net sales=$${sales}
+COGS=$${cogs}
+Selling expenses=$${sga}
+Research & development=$${rAndD}
+Depreciation expense=$${dep}
+Interest expense=$${interest}
+Tax rate=${round(taxRate * 100, 6)}%
+Compute net income.`;
 
     out.push({
       topic: "acct_net_income",
@@ -740,6 +745,7 @@ function genAcctNetIncome(n: number): Case[] {
   }
   return out;
 }
+
 
 function genAcctCVP(n: number): Case[] {
   const out: Case[] = [];
