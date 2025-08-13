@@ -3,10 +3,23 @@ import { Parser } from "expr-eval";
 import type { BoardUnderstanding, Verification } from "@/lib/types";
 
 /** ---------- Text normalization ---------- */
+function insertImpliedMultiplication(s: string): string {
+  let t = s;
+  // number followed by variable or '('  =>  2x -> 2*x ,  3(x+1) -> 3*(x+1)
+  t = t.replace(/(\d(?:\.\d+)?)(\s*)(?=[A-Za-z(])/g, "$1*$2");
+  // single-letter variable followed by '('  =>  x(x+1) -> x*(x+1)
+  // \b ensures we don't split function names like 'sqrt(' or 'log('
+  t = t.replace(/\b([A-Za-z])(\s*)(?=\()/g, "$1*$2");
+  // ')' followed by variable or '('  =>  (x+1)(x-2) -> (x+1)*(x-2) ,  (x)2 -> (x)*2 handled by first rule
+  t = t.replace(/(\))(\s*)(?=[A-Za-z(])/g, "$1*$2");
+  return t;
+}
+
 function norm(s: string): string {
-  return s
+  const t = s
     .normalize("NFKC")
     .replace(/[$€£]/g, "")
+    // strip thousands commas inside numbers like 1,234
     .replace(/(?<=\d),(?=\d{3}(\D|$))/g, "")
     .replace(/\u2212/g, "-")
     .replace(/[–—−]/g, "-")
@@ -17,6 +30,7 @@ function norm(s: string): string {
     .replace(/π/g, "pi")
     .replace(/\s+/g, " ")
     .trim();
+  return insertImpliedMultiplication(t);
 }
 
 /** ---------- Tolerance helpers ---------- */
@@ -97,8 +111,8 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     }
   }
 
-  // x=..., y=...
-  const pairRe = /([a-z])\s*=\s*([^,;|]+)(?=,|;|\bor\b|\band\b|$)/gi;
+  // x=..., y=..., possibly with "or"/"and"/commas and "±"
+  const pairRe = /([a-z])\s*=\s*([^,;|]+?)(?=,|;|\bor\b|\band\b|$)/gi;
   let m: RegExpExecArray | null;
   const foundPairs: Record<string, string[]> = {};
   while ((m = pairRe.exec(final)) !== null) {
@@ -138,7 +152,7 @@ function candidatesFromFinal(finalVal: string | null | undefined, vars: string[]
     for (const a of product(0, {})) out.push(a);
   }
 
-  // Single var fallback
+  // Single var fallback (e.g., "x=3 or 5")
   if (out.length === 0 && vars.length === 1) {
     const v = vars[0];
     let rhs = final.includes("=") ? final.slice(final.indexOf("=") + 1) : final;
@@ -247,3 +261,4 @@ export function verifyAlgebra(result: BoardUnderstanding): Verification | null {
     checks,
   } as Verification;
 }
+
