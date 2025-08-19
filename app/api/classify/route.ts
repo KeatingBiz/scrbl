@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import type { BoardUnderstanding } from "@/lib/types";
-import { verifyBoard } from "@/lib/verify";
+import { verifyBoard } from "@/lib/verify/units";
 
 export const runtime = "nodejs";
 const TZ = "America/Chicago";
