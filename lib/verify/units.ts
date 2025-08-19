@@ -1,21 +1,34 @@
 // lib/verify/units.ts
 import type { BoardUnderstanding } from "@/lib/types";
 
-/**
- * Minimal shape that route.ts expects.
- * - route.ts reads `.allVerified`
- * - You can add more fields later (e.g., reasons, per-step checks, etc.)
- */
-export type VerifyOutcome = {
-  allVerified: boolean;
-  reasons?: string[];
+/** One individual check result (expand later as needed) */
+export type VerificationCheck = {
+  name: string;        // e.g. "answer-equals", "step-count"
+  ok: boolean;         // did this check pass?
+  detail?: string;     // optional human-readable detail
 };
 
+/** The verification object used across the app/scripts */
+export type Verification = {
+  subject: "answer" | "steps" | "general";
+  method: string;                 // e.g. "heuristic-v1", "stub"
+  checks: VerificationCheck[];    // list of per-check results
+  allVerified: boolean;           // convenience aggregate flag
+};
+
+/** Back-compat alias (some files may refer to VerifyOutcome) */
+export type VerifyOutcome = Verification;
+
 /**
- * Temporary stub: always report "verified".
- * This keeps builds green and marks answers as "matches".
- * Change logic later to actually compare the model's answer/steps.
+ * TEMP STUB:
+ * Return a verification object that always passes.
+ * (You can swap logic later to actually compare result.final, steps, etc.)
  */
-export function verifyBoard(_result: BoardUnderstanding): VerifyOutcome {
-  return { allVerified: true };
+export function verifyBoard(_result: BoardUnderstanding): Verification {
+  return {
+    subject: "answer",
+    method: "stub",
+    checks: [],
+    allVerified: true,
+  };
 }
