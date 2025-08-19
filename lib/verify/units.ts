@@ -1,34 +1,26 @@
 // lib/verify/units.ts
-import type { BoardUnderstanding } from "@/lib/types";
-
-/** One individual check result (expand later as needed) */
-export type VerificationCheck = {
-  name: string;        // e.g. "answer-equals", "step-count"
-  ok: boolean;         // did this check pass?
-  detail?: string;     // optional human-readable detail
-};
-
-/** The verification object used across the app/scripts */
-export type Verification = {
-  subject: "answer" | "steps" | "general";
-  method: string;                 // e.g. "heuristic-v1", "stub"
-  checks: VerificationCheck[];    // list of per-check results
-  allVerified: boolean;           // convenience aggregate flag
-};
-
-/** Back-compat alias (some files may refer to VerifyOutcome) */
-export type VerifyOutcome = Verification;
+import type {
+  BoardUnderstanding,
+  Verification as TypesVerification,
+  VerificationMethod,
+} from "@/lib/types";
 
 /**
- * TEMP STUB:
- * Return a verification object that always passes.
- * (You can swap logic later to actually compare result.final, steps, etc.)
+ * Make our exported Verification type EXACTLY the same as the project's canonical type.
+ * This ensures imports from "@/lib/verify/units" and "@/lib/types" are assignable to each other.
+ */
+export type Verification = TypesVerification;
+
+/**
+ * Temporary stub implementation.
+ * - Returns a valid Verification object that satisfies the project's type expectations.
+ * - Uses literal casts pulled from the canonical type to avoid union-type mismatches.
  */
 export function verifyBoard(_result: BoardUnderstanding): Verification {
   return {
-    subject: "answer",
-    method: "stub",
-    checks: [],
-    allVerified: true,
+    subject: "answer" as Verification["subject"],     // use a valid subject literal from your union
+    method: "stub" as VerificationMethod,             // cast to the project's VerificationMethod union
+    checks: [] as Verification["checks"],             // empty list of checks is fine as a stub
+    allVerified: true,                                // choose true/false as you prefer for default behavior
   };
 }
