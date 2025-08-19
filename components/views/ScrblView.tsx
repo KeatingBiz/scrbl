@@ -127,7 +127,9 @@ export default function ScrblView() {
         <div className="max-w-sm">
           <h1 className="text-white font-extrabold text-2xl sm:text-3xl leading-tight tracking-wide">
             Snap <span aria-hidden="true">→</span> Solve <span aria-hidden="true">→</span> Save
-          </h1>
+          <h1 className="text-white font-extrabold text-2xl sm:text-3xl leading-tight tracking-wide">
+  Snap <span className="text-scrbl" aria-hidden="true">→</span> Solve <span className="text-scrbl" aria-hidden="true">→</span> Save
+</h1>
         </div>
 
         {/* Camera button */}
